@@ -35,7 +35,7 @@ function ResultCard({ platform, mode, data, quality, onQualityChange, refreshing
   // Build quality/resolution label from real data where possible
   const qualityLabel = isAudio
     ? (quality === 'hi' ? '320kbps' : '128kbps')
-    : (quality === 'hd' ? 'Up to 1080p' : 'Up to 480p');
+    : (data?.width && data?.height ? `${data.width} x ${data.height}` : 'Source quality');
 
   const sizeLabel = data?.filesize
     ? `${(data.filesize / (1024 * 1024)).toFixed(1)} MB`
@@ -105,8 +105,8 @@ function ResultCard({ platform, mode, data, quality, onQualityChange, refreshing
                 </>
               ) : (
                 <>
-                  <option value="hd">HD / Up to 1080p</option>
-                  <option value="sd">SD / Up to 480p</option>
+                  <option value="hd">HD / Prefer 1080p</option>
+                  <option value="sd">SD / Prefer 480p</option>
                 </>
               )}
             </select>
@@ -243,6 +243,7 @@ export default function Hero() {
             <div className="rs-input">
               <LinkIcon size={20} />
               <input
+                disabled={status === 'loading' || refreshing}
                 ref={inputRef}
                 value={url}
                 onChange={(e) => {
@@ -254,7 +255,7 @@ export default function Hero() {
                 aria-label="Video URL"
                 onKeyDown={(e) => { if (e.key === 'Enter') onDownload(); }}
               />
-              <button className="rs-input__paste" onClick={onPaste}>
+              <button className="rs-input__paste" onClick={onPaste} disabled={status === 'loading' || refreshing}>
                 <Clipboard size={15} /> Paste
               </button>
             </div>

@@ -15,7 +15,7 @@ ReelSave includes Python, yt-dlp, FFmpeg, and Node. No separate dependencies are
 
 ## Features
 
-- MP4 video up to 1080p, or smaller SD files when supported by the source.
+- MP4 video with a 1080p or 480p preference, including portrait reels. Uses the nearest available quality when the source has no matching size.
 - MP3 audio at 128 or 320 kbps.
 - A purple/pink desktop interface with native clipboard and file-save dialogs.
 - A glowing update button when a newer downloader or app version is available.

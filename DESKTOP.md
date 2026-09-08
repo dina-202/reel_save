@@ -13,7 +13,7 @@ npm run build:desktop
 npm run sign:release
 ```
 
-The installer is `release/ReelSave-Setup-1.0.1.exe`. Build resources and outputs are ignored by Git. Runtime downloads come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds. Bundled licenses and source references are in `resources/runtime/licenses`.
+The installer is `release/ReelSave-Setup-1.0.2.exe`. Build resources and outputs are ignored by Git. Runtime downloads come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds. Bundled licenses and source references are in `resources/runtime/licenses`.
 
 ## Two separate update paths
 
@@ -34,9 +34,9 @@ These update signatures are separate from Windows Authenticode signing. The loca
 
 ## Publish a new version later
 
-1. Change the root `package.json` version (for example `1.0.2`) and refresh the lockfile with `npm install --package-lock-only`.
+1. Change the root `package.json` version (for example `1.0.3`) and refresh the lockfile with `npm install --package-lock-only`.
 2. Run the build and signing commands above.
-3. Create a GitHub Release tagged exactly `v1.0.2`.
+3. Create a GitHub Release tagged exactly `v1.0.3`.
 4. Upload the installer `.exe`, its `.blockmap`, `latest.yml`, `release-manifest.json`, and `release-manifest.sig` from the same build. Do not modify the installer after signing the manifest.
 5. Publish the release when ready. Installed copies check on launch and hourly, or when the user clicks **Check app updates**.
 

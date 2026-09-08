@@ -72,18 +72,20 @@ def _run_ytdlp(args: list[str], timeout: int = 120):
     return result
 
 
-def video_selector(quality: str) -> str:
-    height = 480 if quality == "sd" else 1080
-    return (f"bestvideo[ext=mp4][height<={height}]+bestaudio[ext=m4a]/"
-            f"best[ext=mp4][height<={height}]/"
-            f"bestvideo[height<={height}]+bestaudio/best[height<={height}]")
+def video_options(quality: str) -> list[str]:
+    # res ranks the shorter edge, so 1080x1920 is treated as 1080p.
+    # Sorting prefers the target size without excluding unknown dimensions or
+    # sources that have no smaller rendition. Final fallback supports silent video.
+    resolution = 480 if quality == "sd" else 1080
+    return ["--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best/bestvideo",
+            "--format-sort", f"res:{resolution}"]
 
 
 def extract_info(url: str, fmt: str = "video", quality: str = "hd") -> dict:
     # Metadata can describe separate video/audio streams; yt-dlp merges them
     # when the user downloads, instead of sending a fragile CDN URL to the UI.
-    selector = "bestaudio/best" if fmt == "audio" else video_selector(quality)
-    result = run_ytdlp(["-J", "--format", selector, "--", url])
+    options = ["--format", "bestaudio/best"] if fmt == "audio" else video_options(quality)
+    result = run_ytdlp(["-J", *options, "--", url])
 
     # ---------- parse JSON ----------
     try:
@@ -128,6 +130,8 @@ def extract_info(url: str, fmt: str = "video", quality: str = "hd") -> dict:
         "platform": platform,
         "filesize": filesize,
         "duration": duration,
+        "width": info.get("width"),
+        "height": info.get("height"),
     }
 
 
@@ -148,6 +152,8 @@ class DownloadResponse(BaseModel):
     platform: str
     filesize: int | None = None
     duration: str | None = None
+    width: int | None = None
+    height: int | None = None
 
 
 @app.get("/")
@@ -187,7 +193,7 @@ def download_file(req: DownloadRequest, audio: bool):
             args += ["--format", "bestaudio/best", "--extract-audio", "--audio-format", "mp3",
                      "--audio-quality", "128K" if req.quality == "lo" else "320K"]
         else:
-            args += ["--format", video_selector(req.quality), "--merge-output-format", "mp4",
+            args += [*video_options(req.quality), "--merge-output-format", "mp4",
                      "--recode-video", "mp4"]
         run_ytdlp(args + ["--", req.url.strip()], timeout=600)
         ext = "mp3" if audio else "mp4"
