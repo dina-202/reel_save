@@ -7,6 +7,46 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 import backend
+from yt_dlp import YoutubeDL
+
+
+class VideoFormatTests(unittest.TestCase):
+    def select(self, quality, formats, options=None):
+        options = options or backend.video_options(quality)
+        params = {'quiet': True, 'no_warnings': True, 'format': options[1],
+                  'format_sort': [options[3]] if len(options) > 3 else []}
+        with YoutubeDL(params) as downloader:
+            return downloader.process_ie_result({'id': 'test', 'title': 'Test reel', 'formats': formats}, download=False)
+
+    def video(self, name, width=None, height=None, audio=False):
+        return {'format_id': name, 'url': f'https://media.example/{name}.mp4', 'ext': 'mp4',
+                'vcodec': 'h264', 'acodec': 'aac' if audio else 'none', 'width': width, 'height': height}
+
+    def audio(self):
+        return {'format_id': 'audio', 'url': 'https://media.example/audio.m4a', 'ext': 'm4a',
+                'vcodec': 'none', 'acodec': 'aac'}
+
+    def test_portrait_hd_uses_shorter_edge(self):
+        info = self.select('hd', [self.video('720', 720, 1280), self.video('1080', 1080, 1920), self.audio()])
+        self.assertEqual(info['width'], 1080)
+        self.assertEqual(info['height'], 1920)
+        self.assertEqual(len(info['requested_formats']), 2)
+
+    def test_sd_prefers_480_when_available(self):
+        info = self.select('sd', [self.video('480', 480, 854), self.video('720', 720, 1280), self.audio()])
+        self.assertEqual(info['width'], 480)
+
+    def test_sd_falls_back_when_no_480_variant_exists(self):
+        info = self.select('sd', [self.video('720', 720, 1280), self.video('1080', 1080, 1920), self.audio()])
+        self.assertEqual(info['width'], 720)
+
+    def test_unknown_dimensions_are_downloadable(self):
+        info = self.select('hd', [self.video('unknown', audio=True)])
+        self.assertEqual(info['format_id'], 'unknown')
+
+    def test_silent_video_is_downloadable(self):
+        info = self.select('hd', [self.video('silent', 1080, 1920)])
+        self.assertEqual(info['format_id'], 'silent')
 
 
 class DownloadTests(unittest.TestCase):
