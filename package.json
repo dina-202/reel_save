@@ -1,0 +1,78 @@
+{
+  "name": "reelsave",
+  "version": "1.0.1",
+  "description": "Personal video and audio downloader for Windows",
+  "author": "dina-202",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "repository": "https://github.com/dina-202/reel_save",
+  "scripts": {
+    "desktop": "npm run build:ui && electron .",
+    "prepare:runtime": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-runtime.ps1",
+    "build:ui": "node scripts/build-ui.cjs",
+    "build:desktop": "npm run build:ui && electron-builder --win nsis --x64 --publish never",
+    "test:desktop": "node --test desktop/*.test.cjs",
+    "sign:release": "node scripts/sign-release.cjs"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^44.2.0",
+    "electron-builder": "^26.0.12",
+    "sharp": "^0.35.4"
+  },
+  "build": {
+    "appId": "com.dina202.reelsave",
+    "productName": "ReelSave",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "frontend/dist",
+        "to": "frontend"
+      },
+      {
+        "from": "backend.py",
+        "to": "backend/backend.py"
+      },
+      {
+        "from": "updater.py",
+        "to": "backend/updater.py"
+      },
+      {
+        "from": "desktop_server.py",
+        "to": "backend/desktop_server.py"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "ReelSave-Setup-${version}.${ext}",
+      "icon": "desktop/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "dina-202",
+      "repo": "reel_save",
+      "releaseType": "release"
+    }
+  }
+}
