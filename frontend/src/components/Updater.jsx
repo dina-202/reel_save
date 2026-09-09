@@ -95,9 +95,9 @@ export default function Updater() {
           <p>Installed: {appState.current}{appState.latest && ` / Latest: ${appState.latest}`}</p>
           <p>{appUpdate.error || (appState.status === 'error'
             ? appState.error || 'Could not check or install the app update. Please retry.'
-            : appState.status === 'ready' ? 'Signature verified. Restart to install; your settings and saved videos stay in place.'
+            : appState.status === 'ready' ? 'Signature verified. Restart to install silently; your settings and saved videos stay in place.'
               : appState.status === 'available' ? 'A new app version is available on GitHub.'
-                : appBusy ? `${appState.status === 'downloading' ? `Downloading ${appState.progress}%` : 'Verifying the signed installer...'} Keep ReelSave running.`
+                : appBusy ? (appState.status === 'installing' ? 'Installing silently and restarting ReelSave...' : `${appState.status === 'downloading' ? `Downloading ${appState.progress}%` : 'Verifying the signed installer...'} Keep ReelSave running.`)
                   : appState.status === 'current' ? 'You have the latest app version.' : 'Checking for app updates...')}</p>
           {appPending && <button className="rs-btn rs-btn--purple" disabled={updating || busy}
             onClick={() => appUpdate.action(appState.status === 'ready' ? 'installUpdate' : 'downloadUpdate')}>

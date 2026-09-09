@@ -10,6 +10,7 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 import httpx
 from packaging.version import Version
+from diagnostics import emit_report
 
 router = APIRouter(prefix="/updates")
 operation_lock = threading.Lock()
@@ -70,7 +71,8 @@ def check(request: Request, refresh: bool = False):
                 state.update(latest=latest, checked_at=time.time())
                 if state["status"] == "check_failed":
                     state.update(status="idle", error=None)
-        except (httpx.HTTPError, ValueError, KeyError):
+        except (httpx.HTTPError, ValueError, KeyError) as error:
+            emit_report('downloader_update', error)
             with state_lock:
                 if state["status"] != "updating":
                     state.update(status="check_failed", error="Could not check for updates. Check your internet connection and retry.")
@@ -96,6 +98,7 @@ def install(latest):
         with state_lock:
             state.update(status="updated", error=None)
     except Exception as exc:
+        emit_report('downloader_update', exc)
         message = "Update timed out. Check your connection and retry." if isinstance(exc, subprocess.TimeoutExpired) else str(exc)
         with state_lock:
             state.update(status="failed", error=message)

@@ -6,6 +6,7 @@ export async function apiFetch(path, options) {
   try {
     response = await fetch(`${API_URL}${path}`, options);
   } catch {
+    window.reelSaveDesktop?.recordDiagnostic('engine_unreachable').catch(() => {});
     throw new Error('Cannot reach the ReelSave download engine. Close and reopen the app, then retry.');
   }
   if (!response.ok) {

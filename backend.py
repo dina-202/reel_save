@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 from updater import router as updater_router, operation_lock, begin_transfer, finish_transfer
+from diagnostics import diagnostic_operation
 
 app = FastAPI(title="ReelSave Engine", docs_url=None, redoc_url=None)
 app.include_router(updater_router)
@@ -170,7 +171,8 @@ def download(req: DownloadRequest):
     if not req.url.strip():
         raise HTTPException(status_code=400, detail="URL is required.")
 
-    info = extract_info(req.url.strip(), fmt=req.format, quality=req.quality)
+    with diagnostic_operation('metadata', req):
+        info = extract_info(req.url.strip(), fmt=req.format, quality=req.quality)
     return info
 
 
@@ -210,9 +212,11 @@ def download_file(req: DownloadRequest, audio: bool):
 
 @app.post("/download-audio")
 def download_audio(req: DownloadRequest):
-    return download_file(req, audio=True)
+    with diagnostic_operation('download', req):
+        return download_file(req, audio=True)
 
 
 @app.post("/download-video")
 def download_video(req: DownloadRequest):
-    return download_file(req, audio=False)
+    with diagnostic_operation('download', req):
+        return download_file(req, audio=False)
