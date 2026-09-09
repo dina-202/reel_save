@@ -20,12 +20,22 @@ ReelSave includes Python, yt-dlp, FFmpeg, and Node. No separate dependencies are
 - A purple/pink desktop interface with native clipboard and file-save dialogs.
 - A glowing update button when a newer downloader or app version is available.
 - Separate yt-dlp updates and signed application updates through GitHub Releases.
+- Silent installation of app updates followed by a restart.
+- Privacy-filtered local diagnostics with a preview before opening a public GitHub report.
 
 Source availability and platform restrictions can affect individual downloads. Keep ReelSave open until your download or update finishes.
 
 ## Updates
 
-Open **Update details** to check downloader and app versions. Downloader updates apply without restarting. App updates are downloaded and verified before **Restart & install** becomes available. Your saved files and settings remain in place.
+Open **Update details** to check downloader and app versions. Downloader updates apply without restarting. App updates are downloaded and verified before **Restart & install** becomes available. Starting with version 1.0.3, installing the next update runs silently and restarts ReelSave. Your saved files and settings remain in place. The first installation still uses the setup wizard. Updating from 1.0.2 may show the wizard once because the older app starts that installer.
+
+## Reporting problems
+
+Click **Report a problem** below the download box. ReelSave automatically keeps up to 20 distinct, privacy-filtered diagnostic records on your PC. Select a report, review its exact contents, then click **Open GitHub report**. Sign in to GitHub and submit the issue in your browser. Opening the form does not submit it. Issues and the submitting GitHub username are public.
+
+Reports contain only software versions, Windows version and architecture, the failing step, a fixed error category, a platform name, format, quality and HTTP status when known. Video URLs and IDs, titles, account names, local file paths, cookies, tokens, raw errors and stack traces are excluded. Unrecognized errors use a generic category; we may need a follow-up description to reproduce them.
+
+Diagnostics are stored in `%APPDATA%/ReelSave/diagnostics.json` and can be cleared in the report preview. Existing `backend.log` and `desktop.log` stay local and are never attached. No reports are transmitted automatically; an automatic reporting service is not configured.
 
 ## Development
 

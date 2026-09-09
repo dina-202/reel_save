@@ -1,23 +1,28 @@
-const { app, BrowserWindow, ipcMain, dialog, session, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, clipboard, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const readline = require('node:readline');
 const { createUpdater } = require('./app-updater.cjs');
+const { createDiagnostics } = require('./diagnostics.cjs');
 
 let backend;
 let window;
 let baseUrl;
 let quitting = false;
 let restartApproved = false;
+let diagnostics;
 const token = crypto.randomBytes(32).toString('hex');
 if (process.env.REELSAVE_DATA_DIR) app.setPath('userData', path.resolve(process.env.REELSAVE_DATA_DIR));
 app.setAppUserModelId('com.dina202.reelsave');
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
-  app.whenReady().then(start).catch(error => { dialog.showErrorBox('ReelSave could not start', error.message); app.quit(); });
+  app.whenReady().then(start).catch(error => {
+    diagnostics?.capture({ stage: 'startup', code: 'startup_failed' });
+    dialog.showErrorBox('ReelSave could not start', error.message); app.quit();
+  });
 }
 
 async function api(route, options = {}) {
@@ -30,6 +35,9 @@ async function api(route, options = {}) {
 }
 
 async function start() {
+  diagnostics = createDiagnostics({ directory: app.getPath('userData'), appVersion: app.getVersion(),
+    electronVersion: process.versions.electron, windowsVersion: require('node:os').release(), arch: process.arch,
+    openExternal: url => shell.openExternal(url) });
   await fs.promises.mkdir(app.getPath('userData'), { recursive: true });
   const desktopLog = message => fs.appendFileSync(path.join(app.getPath('userData'), 'desktop.log'), `${new Date().toISOString()} ${message}\n`);
   const resources = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
@@ -51,13 +59,20 @@ async function start() {
   });
   backend.stderr.pipe(log, { end: false });
   backend.on('exit', code => {
-    if (!quitting) { dialog.showErrorBox('ReelSave server stopped', `Please reopen ReelSave. Server exit: ${code}. Log: ${path.join(app.getPath('userData'), 'backend.log')}`); app.quit(); }
+    if (!quitting) {
+      diagnostics.capture({ stage: 'engine', code: 'engine_stopped' });
+      dialog.showErrorBox('ReelSave server stopped', `Please reopen ReelSave. Server exit: ${code}. Log: ${path.join(app.getPath('userData'), 'backend.log')}`); app.quit();
+    }
   });
   const port = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('The local engine did not start within 45 seconds.')), 45000);
     backend.once('error', error => { clearTimeout(timer); reject(error); });
     backend.once('exit', () => { clearTimeout(timer); reject(new Error('The bundled engine exited during startup.')); });
     readline.createInterface({ input: backend.stdout }).on('line', line => {
+      if (line.startsWith('REELSAVE_DIAGNOSTIC=')) {
+        try { diagnostics.capture(JSON.parse(line.slice('REELSAVE_DIAGNOSTIC='.length))); } catch { /* Ignore malformed diagnostics. */ }
+        return;
+      }
       const match = /^REELSAVE_PORT=(\d+)$/.exec(line);
       if (match) { clearTimeout(timer); resolve(Number(match[1])); } else log.write(`${line}\n`);
     });
@@ -76,6 +91,9 @@ async function start() {
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.on('will-download', (_event, item) => {
     item.setSaveDialogOptions({ title: 'Save your download', defaultPath: path.join(app.getPath('downloads'), path.basename(item.getFilename())) });
+    item.once('done', (_event, state) => {
+      if (state === 'interrupted') diagnostics.capture({ stage: 'save', code: 'save_interrupted' });
+    });
   });
 
   const updater = createUpdater(app, async () => {
@@ -86,11 +104,26 @@ async function start() {
       restartApproved = false;
       await api('/updates/cancel-restart', { method: 'POST', headers: { 'X-ReelSave-Update-Token': status.token } });
     };
-  });
+  }, event => diagnostics.capture(event));
   ipcMain.handle('clipboard:read', event => {
     if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(`${baseUrl}/`)) throw new Error('Clipboard access is only available in ReelSave.');
     return clipboard.readText();
   });
+  for (const [name, handler] of Object.entries({
+    list: () => diagnostics.list(), clear: () => diagnostics.clear(), open: id => diagnostics.open(id),
+    capture: input => {
+      // The renderer can only signal these two generic failures; it cannot submit raw text.
+      if (input === 'engine_unreachable') diagnostics.capture({ stage: 'engine', code: 'network_error' });
+      else if (input === 'renderer_error') diagnostics.capture({ stage: 'renderer', code: 'renderer_error' });
+    },
+  })) {
+    ipcMain.handle(`diagnostics:${name}`, (event, input) => {
+      if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(`${baseUrl}/`)) {
+        throw new Error('Diagnostic reports are only available in ReelSave.');
+      }
+      return handler(input);
+    });
+  }
   for (const [name, handler] of Object.entries({ status: updater.status, check: updater.check, download: updater.download, install: updater.install })) {
     ipcMain.handle(`app-update:${name}`, async event => {
       if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(`${baseUrl}/`)) {
@@ -104,8 +137,14 @@ async function start() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.webContents.on('did-fail-load', (_event, code, description) => desktopLog(`UI load failed ${code}: ${description}`));
-  window.webContents.on('render-process-gone', (_event, details) => desktopLog(`UI stopped: ${details.reason}`));
+  window.webContents.on('did-fail-load', (_event, code, description) => {
+    desktopLog(`UI load failed ${code}: ${description}`);
+    diagnostics.capture({ stage: 'renderer', code: 'renderer_error' });
+  });
+  window.webContents.on('render-process-gone', (_event, details) => {
+    desktopLog(`UI stopped: ${details.reason}`);
+    diagnostics.capture({ stage: 'renderer', code: 'renderer_error' });
+  });
   window.webContents.on('will-navigate', (event, url) => { if (!url.startsWith(`${baseUrl}/`)) event.preventDefault(); });
   window.on('close', async event => {
     if (quitting || restartApproved) return;

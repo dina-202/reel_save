@@ -13,12 +13,12 @@ npm run build:desktop
 npm run sign:release
 ```
 
-The installer is `release/ReelSave-Setup-1.0.2.exe`. Build resources and outputs are ignored by Git. Runtime downloads come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds. Bundled licenses and source references are in `resources/runtime/licenses`.
+The installer is `release/ReelSave-Setup-1.0.3.exe`. Build resources and outputs are ignored by Git. Runtime downloads come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds. Bundled licenses and source references are in `resources/runtime/licenses`.
 
 ## Two separate update paths
 
 - **Downloader updates:** the downloader button upgrades yt-dlp and its support packages in a writable per-user bundled Python copy. No app restart is needed.
-- **App updates:** Electron checks GitHub Releases. Users download an available version, then click **Restart & install**. Downloads and yt-dlp updates must finish first. The app verifies an Ed25519-signed release manifest and the installer's SHA-256 before enabling installation. Automatic installation on quit is disabled so this verification cannot be skipped.
+- **App updates:** Electron checks GitHub Releases. Users download an available version, then click **Restart & install**. Downloads and yt-dlp updates must finish first. The app verifies an Ed25519-signed release manifest and the installer's SHA-256 before enabling installation. The updater uses silent installation with forced relaunch; the first-install wizard remains enabled. Automatic installation on quit is disabled so verification cannot be skipped. Updates launched by versions before 1.0.3 may show the old wizard once.
 
 App settings and runtime state live under `%APPDATA%/ReelSave`. A new application version receives a fresh copy of its matching runtime. Downloaded videos are saved to the location the user chooses and are not deleted by upgrades or uninstall. The installer is per-user by default.
 
@@ -34,9 +34,9 @@ These update signatures are separate from Windows Authenticode signing. The loca
 
 ## Publish a new version later
 
-1. Change the root `package.json` version (for example `1.0.3`) and refresh the lockfile with `npm install --package-lock-only`.
+1. Change the root `package.json` version (for example `1.0.4`) and refresh the lockfile with `npm install --package-lock-only`.
 2. Run the build and signing commands above.
-3. Create a GitHub Release tagged exactly `v1.0.3`.
+3. Create a GitHub Release tagged exactly `v1.0.4`.
 4. Upload the installer `.exe`, its `.blockmap`, `latest.yml`, `release-manifest.json`, and `release-manifest.sig` from the same build. Do not modify the installer after signing the manifest.
 5. Publish the release when ready. Installed copies check on launch and hourly, or when the user clicks **Check app updates**.
 
@@ -47,7 +47,16 @@ These update signatures are separate from Windows Authenticode signing. The loca
 ```powershell
 build\runtime\python\python -m unittest discover -s . -p "test_*.py"
 npm run test:desktop
+node_modules/.bin/electron scripts/smoke-desktop.cjs
 python scripts/smoke-runtime.py release/win-unpacked/resources --live
 ```
 
 The runtime smoke check uses only packaged binaries, tests desktop API authentication, validates tools, and optionally downloads a short public YouTube video as MP3 and MP4. Full update-over-GitHub testing requires a second publicly published version. The initial release establishes the feed; a genuine version upgrade can be tested when the next version is published.
+
+The desktop smoke check uses an isolated profile inside `build`, captures a backend failure, exercises the report preview through real IPC, intercepts browser opening without submitting an issue, checks clearing and narrow layout, and saves preview screenshots in `build`.
+
+## Diagnostic reporting
+
+`diagnostics.py` classifies engine failures locally and emits only fixed diagnostic fields to the desktop host. `desktop/diagnostics.cjs` independently validates those fields before storing at most 20 distinct records in the user data directory. Public issue bodies are generated only from these fields. Raw logs, arbitrary exception text, video links and persistent device identifiers are never attached.
+
+The report dialog displays exactly the body that will be placed in a GitHub issue form. The main process opens only the fixed repository's issue URL, accepts a local report ID rather than an arbitrary URL, and checks the calling renderer/frame. The user must sign in and submit through GitHub. There is no report server, automatic upload, or bundled GitHub credential.

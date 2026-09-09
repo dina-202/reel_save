@@ -3,7 +3,7 @@ const path = require('node:path');
 const { autoUpdater } = require('electron-updater');
 const { verifyUpdate } = require('./verify-update.cjs');
 
-function createUpdater(app, beforeInstall) {
+function createUpdater(app, beforeInstall, reportError = () => {}) {
   let state = { current: app.getVersion(), status: 'idle', latest: null, progress: 0, error: null };
   let checking = false;
   let verified = false;
@@ -12,6 +12,7 @@ function createUpdater(app, beforeInstall) {
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowDowngrade = false;
   const fail = error => {
+    reportError({ stage: 'app_update', code: 'app_update_failed' });
     state = { ...state, status: 'error', error: error.message.slice(0, 600) };
     if (releaseRestart) { const release = releaseRestart; releaseRestart = null; release().catch(() => {}); }
   };
@@ -56,7 +57,7 @@ function createUpdater(app, beforeInstall) {
       if (!verified || state.status !== 'ready') throw new Error('Download and verify the app update first.');
       releaseRestart = await beforeInstall();
       state = { ...state, status: 'installing' };
-      setImmediate(() => { try { autoUpdater.quitAndInstall(false, true); } catch (error) { fail(error); } });
+      setImmediate(() => { try { autoUpdater.quitAndInstall(true, true); } catch (error) { fail(error); } });
       return state;
     },
   };

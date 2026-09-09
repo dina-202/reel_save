@@ -1,6 +1,6 @@
 {
   "name": "reelsave",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Personal video and audio downloader for Windows",
   "author": "dina-202",
   "private": true,
@@ -44,6 +44,10 @@
       {
         "from": "backend.py",
         "to": "backend/backend.py"
+      },
+      {
+        "from": "diagnostics.py",
+        "to": "backend/diagnostics.py"
       },
       {
         "from": "updater.py",

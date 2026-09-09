@@ -125,7 +125,7 @@ function ResultCard({ platform, mode, data, quality, onQualityChange, refreshing
   );
 }
 
-export default function Hero() {
+export default function Hero({ onReport }) {
   const [url, setUrl] = useState('');
   const [mode, setMode] = useState('video');
   const [quality, setQuality] = useState('hd');
@@ -281,6 +281,7 @@ export default function Hero() {
               </>
             )}
           </p>
+          <button className="rs-updater__details rs-report__trigger" onClick={onReport}>Report a problem</button>
         </div>
 
         <div className="rs-platforms" id="sites">
