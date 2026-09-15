@@ -84,7 +84,7 @@ class DownloadTests(unittest.TestCase):
         paths = []
         def produce(args, timeout):
             template = args[args.index('-o') + 1]
-            path = template.replace('%(ext)s', 'mp3' if audio else 'mp4')
+            path = os.path.join(os.path.dirname(template), f'Example title [test].{"mp3" if audio else "mp4"}')
             paths.append(path)
             with open(path, 'wb') as file:
                 file.write(b'media-test-bytes')
@@ -92,6 +92,7 @@ class DownloadTests(unittest.TestCase):
                 self.assertEqual(args[args.index('--audio-quality') + 1], '128K')
             else:
                 self.assertIn('--merge-output-format', args)
+            self.assertIn('--windows-filenames', args)
             self.assertEqual(args[-2], '--')
         with patch('backend.shutil.which', return_value='ffmpeg'), patch('backend.run_ytdlp', side_effect=produce):
             response = self.client.post('/download-audio' if audio else '/download-video',
@@ -99,6 +100,7 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b'media-test-bytes')
         self.assertIn('.mp3' if audio else '.mp4', response.headers['content-disposition'])
+        self.assertIn('Example%20title%20%5Btest%5D', response.headers['content-disposition'])
         self.assertFalse(os.path.exists(paths[0]))
 
     def test_mp3_stream_and_cleanup(self):

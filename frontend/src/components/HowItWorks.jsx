@@ -2,8 +2,8 @@ import { Link2, ClipboardPaste, Download } from 'lucide-react';
 
 const STEPS = [
   { Icon: Link2, title: 'Copy Link', body: "Tap Share on any reel and copy its link — YouTube, Instagram, Facebook, or TikTok." },
-  { Icon: ClipboardPaste, title: 'Paste URL', body: "Drop the link into ReelSave's bar above. We detect the platform automatically." },
-  { Icon: Download, title: 'Download', body: 'Choose MP4 video or MP3 audio, pick a quality, then save the file to your PC.' },
+  { Icon: ClipboardPaste, title: 'Paste URL', body: "Paste one link or a list. ReelSave starts the queue automatically." },
+  { Icon: Download, title: 'Download', body: 'Files are named and saved directly to your chosen folder without extra popups.' },
 ];
 
 export default function HowItWorks() {
