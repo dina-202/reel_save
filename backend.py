@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from typing import Literal
 from pydantic import BaseModel
+from pathlib import Path
 import json
 import os
 import shutil
@@ -190,7 +191,7 @@ def download_file(req: DownloadRequest, audio: bool):
         finally:
             finish_transfer()
     try:
-        args = ["-o", os.path.join(tmpdir.name, "download.%(ext)s")]
+        args = ["--windows-filenames", "-o", os.path.join(tmpdir.name, "%(title).180B [%(id)s].%(ext)s")]
         if audio:
             args += ["--format", "bestaudio/best", "--extract-audio", "--audio-format", "mp3",
                      "--audio-quality", "128K" if req.quality == "lo" else "320K"]
@@ -199,12 +200,13 @@ def download_file(req: DownloadRequest, audio: bool):
                      "--recode-video", "mp4"]
         run_ytdlp(args + ["--", req.url.strip()], timeout=600)
         ext = "mp3" if audio else "mp4"
-        path = os.path.join(tmpdir.name, f"download.{ext}")
-        if not os.path.isfile(path):
+        matches = sorted(Path(tmpdir.name).glob(f"*.{ext}"))
+        if len(matches) != 1:
             raise HTTPException(status_code=502, detail=f"No {ext.upper()} file was produced.")
+        path = str(matches[0])
         # Keep the temporary file alive until the response has finished streaming.
         return FileResponse(path, media_type="audio/mpeg" if audio else "video/mp4",
-                            filename=f"download.{ext}", background=BackgroundTask(cleanup_download))
+                            filename=matches[0].name, background=BackgroundTask(cleanup_download))
     except Exception:
         cleanup_download()
         raise

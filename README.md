@@ -8,8 +8,8 @@ A Windows desktop app for saving videos as MP4 and audio as MP3.
 
 1. Download the latest `ReelSave-Setup` installer from GitHub Releases.
 2. Run the installer and open the ReelSave desktop shortcut.
-3. Paste a YouTube, Instagram, Facebook, or TikTok video link.
-4. Choose MP4 video or MP3 audio, select a quality, and save your file.
+3. Choose MP4 video or MP3 audio, select a quality, and set your download location.
+4. Paste one link to download immediately, or paste up to 50 links on separate lines for a bulk queue.
 
 ReelSave includes Python, yt-dlp, FFmpeg, and Node. No separate dependencies are needed. The installer targets Windows 10/11 x64.
 
@@ -17,13 +17,20 @@ ReelSave includes Python, yt-dlp, FFmpeg, and Node. No separate dependencies are
 
 - MP4 video with a 1080p or 480p preference, including portrait reels. Uses the nearest available quality when the source has no matching size.
 - MP3 audio at 128 or 320 kbps.
-- A purple/pink desktop interface with native clipboard and file-save dialogs.
+- A saved download location set by direct path or a native folder browser, with no save popup for each file.
+- Paste-to-download and sequential bulk downloads of up to 50 links per batch.
 - A glowing update button when a newer downloader or app version is available.
 - Separate yt-dlp updates and signed application updates through GitHub Releases.
 - Silent installation of app updates followed by a restart.
 - Privacy-filtered local diagnostics with a preview before opening a public GitHub report.
 
 Source availability and platform restrictions can affect individual downloads. Keep ReelSave open until your download or update finishes.
+
+## Downloads and folders
+
+ReelSave initially uses your Windows Downloads folder. Enter a full folder path and click **Save path**, or click **Browse** to choose one. The setting is remembered in `%APPDATA%/ReelSave/settings.json`. Completed files go directly there, and an existing file is preserved by adding `(1)`, `(2)`, and so on to the new filename.
+
+Pasting with **Ctrl+V** or the **Paste** button starts the download immediately. A link typed or edited manually starts only when you click **Download**. For bulk downloads, copy one link per line and paste the list; ReelSave processes the queue one at a time and continues after an individual failure.
 
 ## Updates
 

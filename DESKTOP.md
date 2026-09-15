@@ -13,7 +13,7 @@ npm run build:desktop
 npm run sign:release
 ```
 
-The installer is `release/ReelSave-Setup-1.0.3.exe`. Build resources and outputs are ignored by Git. Runtime downloads come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds. Bundled licenses and source references are in `resources/runtime/licenses`.
+The installer is `release/ReelSave-Setup-1.0.4.exe`. Build resources and outputs are ignored by Git. Runtime downloads come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds. Bundled licenses and source references are in `resources/runtime/licenses`.
 
 ## Two separate update paths
 
@@ -21,6 +21,8 @@ The installer is `release/ReelSave-Setup-1.0.3.exe`. Build resources and outputs
 - **App updates:** Electron checks GitHub Releases. Users download an available version, then click **Restart & install**. Downloads and yt-dlp updates must finish first. The app verifies an Ed25519-signed release manifest and the installer's SHA-256 before enabling installation. The updater uses silent installation with forced relaunch; the first-install wizard remains enabled. Automatic installation on quit is disabled so verification cannot be skipped. Updates launched by versions before 1.0.3 may show the old wizard once.
 
 App settings and runtime state live under `%APPDATA%/ReelSave`. A new application version receives a fresh copy of its matching runtime. Downloaded videos are saved to the location the user chooses and are not deleted by upgrades or uninstall. The installer is per-user by default.
+
+Media downloads use authenticated IPC from the renderer to the Electron main process. The main process requests the media from the loopback backend and streams it to the saved folder, so Chromium never opens a save dialog or retains the complete file in renderer memory. Folder paths are checked for an absolute Windows path and write access. Filenames from HTTP headers are reduced to a Windows-safe basename, and the destination allocator never overwrites an existing or concurrently reserved file.
 
 ## GitHub Releases
 
@@ -34,9 +36,9 @@ These update signatures are separate from Windows Authenticode signing. The loca
 
 ## Publish a new version later
 
-1. Change the root `package.json` version (for example `1.0.4`) and refresh the lockfile with `npm install --package-lock-only`.
+1. Change the root `package.json` version (for example `1.0.5`) and refresh the lockfile with `npm install --package-lock-only`.
 2. Run the build and signing commands above.
-3. Create a GitHub Release tagged exactly `v1.0.4`.
+3. Create a GitHub Release tagged exactly `v1.0.5`.
 4. Upload the installer `.exe`, its `.blockmap`, `latest.yml`, `release-manifest.json`, and `release-manifest.sig` from the same build. Do not modify the installer after signing the manifest.
 5. Publish the release when ready. Installed copies check on launch and hourly, or when the user clicks **Check app updates**.
 

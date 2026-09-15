@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('reelSaveDesktop', Object.freeze({
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
+  downloadMedia: request => ipcRenderer.invoke('media:download', request),
+  downloadLocation: () => ipcRenderer.invoke('download-location:get'),
+  saveDownloadLocation: folder => ipcRenderer.invoke('download-location:set', folder),
+  browseDownloadLocation: () => ipcRenderer.invoke('download-location:browse'),
+  openDownloadLocation: () => ipcRenderer.invoke('download-location:open'),
   updateStatus: () => ipcRenderer.invoke('app-update:status'),
   checkUpdate: () => ipcRenderer.invoke('app-update:check'),
   downloadUpdate: () => ipcRenderer.invoke('app-update:download'),

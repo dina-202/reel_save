@@ -4,8 +4,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const readline = require('node:readline');
+const { Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
 const { createUpdater } = require('./app-updater.cjs');
 const { createDiagnostics } = require('./diagnostics.cjs');
+const { createDownloadSettings, filenameFromDisposition, friendlyDownloadError } = require('./download-settings.cjs');
 
 let backend;
 let window;
@@ -13,6 +16,7 @@ let baseUrl;
 let quitting = false;
 let restartApproved = false;
 let diagnostics;
+let downloadSettings;
 const token = crypto.randomBytes(32).toString('hex');
 if (process.env.REELSAVE_DATA_DIR) app.setPath('userData', path.resolve(process.env.REELSAVE_DATA_DIR));
 app.setAppUserModelId('com.dina202.reelsave');
@@ -38,6 +42,7 @@ async function start() {
   diagnostics = createDiagnostics({ directory: app.getPath('userData'), appVersion: app.getVersion(),
     electronVersion: process.versions.electron, windowsVersion: require('node:os').release(), arch: process.arch,
     openExternal: url => shell.openExternal(url) });
+  downloadSettings = createDownloadSettings({ dataDir: app.getPath('userData'), defaultFolder: app.getPath('downloads') });
   await fs.promises.mkdir(app.getPath('userData'), { recursive: true });
   const desktopLog = message => fs.appendFileSync(path.join(app.getPath('userData'), 'desktop.log'), `${new Date().toISOString()} ${message}\n`);
   const resources = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
@@ -89,13 +94,6 @@ async function start() {
     callback({ requestHeaders: details.requestHeaders });
   });
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  session.defaultSession.on('will-download', (_event, item) => {
-    item.setSaveDialogOptions({ title: 'Save your download', defaultPath: path.join(app.getPath('downloads'), path.basename(item.getFilename())) });
-    item.once('done', (_event, state) => {
-      if (state === 'interrupted') diagnostics.capture({ stage: 'save', code: 'save_interrupted' });
-    });
-  });
-
   const updater = createUpdater(app, async () => {
     const status = await api('/updates');
     await api('/updates/prepare-restart', { method: 'POST', headers: { 'X-ReelSave-Update-Token': status.token } });
@@ -108,6 +106,64 @@ async function start() {
   ipcMain.handle('clipboard:read', event => {
     if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(`${baseUrl}/`)) throw new Error('Clipboard access is only available in ReelSave.');
     return clipboard.readText();
+  });
+  const fromReelSave = event => event.sender === window?.webContents && event.senderFrame === window.webContents.mainFrame
+    && event.senderFrame.url.startsWith(`${baseUrl}/`);
+  ipcMain.handle('download-location:get', event => {
+    if (!fromReelSave(event)) throw new Error('Download settings are only available in ReelSave.');
+    return downloadSettings.get();
+  });
+  ipcMain.handle('download-location:set', async (event, folder) => {
+    if (!fromReelSave(event)) throw new Error('Download settings are only available in ReelSave.');
+    return downloadSettings.save(folder);
+  });
+  ipcMain.handle('download-location:browse', async event => {
+    if (!fromReelSave(event)) throw new Error('Download settings are only available in ReelSave.');
+    const selection = await dialog.showOpenDialog(window, { title: 'Choose ReelSave download folder',
+      defaultPath: downloadSettings.get().folder, properties: ['openDirectory', 'createDirectory'] });
+    return selection.canceled ? { ...downloadSettings.get(), canceled: true } : downloadSettings.save(selection.filePaths[0]);
+  });
+  ipcMain.handle('download-location:open', async event => {
+    if (!fromReelSave(event)) throw new Error('Download settings are only available in ReelSave.');
+    const error = await shell.openPath(downloadSettings.get().folder);
+    if (error) throw new Error('Windows could not open the download folder.');
+    return { opened: true };
+  });
+  ipcMain.handle('media:download', async (event, request) => {
+    if (!fromReelSave(event)) throw new Error('Downloads are only available in ReelSave.');
+    const format = request?.format === 'audio' ? 'audio' : request?.format === 'video' ? 'video' : null;
+    const qualities = format === 'audio' ? ['hi', 'lo'] : ['hd', 'sd'];
+    if (!format || !qualities.includes(request?.quality)) throw new Error('Choose a valid format and quality.');
+    let source;
+    try { source = new URL(request?.url); } catch { throw new Error('Enter a valid video link.'); }
+    if (!['http:', 'https:'].includes(source.protocol) || source.href.length > 5000) throw new Error('Enter a valid video link.');
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/api/download-${format}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
+        body: JSON.stringify({ url: source.href, format, quality: request.quality }), signal: AbortSignal.timeout(15 * 60 * 1000),
+      });
+    } catch {
+      diagnostics.capture({ stage: 'engine', code: 'network_error' });
+      throw new Error('ReelSave lost its connection to the download engine. Reopen the app and try again.');
+    }
+    if (!response.ok) {
+      let message = `Download failed (${response.status}).`;
+      try { const body = await response.json(); if (typeof body.detail === 'string') message = body.detail; } catch { /* Keep generic error. */ }
+      throw new Error(friendlyDownloadError(message, response.status));
+    }
+    const extension = format === 'audio' ? 'mp3' : 'mp4';
+    const filename = filenameFromDisposition(response.headers.get('content-disposition'), `download.${extension}`);
+    const destination = await downloadSettings.destination(filename, `download.${extension}`);
+    try {
+      if (!response.body) throw new Error('The download returned no file data.');
+      await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination, { flags: 'wx' }));
+      return { filename: path.basename(destination), folder: path.dirname(destination) };
+    } catch {
+      diagnostics.capture({ stage: 'save', code: 'save_interrupted' });
+      try { await fs.promises.unlink(destination); } catch { /* No partial file to remove. */ }
+      throw new Error('ReelSave could not save the file. Check the folder access and available disk space.');
+    } finally { downloadSettings.release(destination); }
   });
   for (const [name, handler] of Object.entries({
     list: () => diagnostics.list(), clear: () => diagnostics.clear(), open: id => diagnostics.open(id),
