@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+  <title>Preparing ReelSave</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Segoe UI", sans-serif; color: #2d1745; background: #faf5ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 15% 5%, #f4ddff, transparent 35%), #faf5ff; }
+    main { width: min(460px, calc(100vw - 48px)); padding: 34px; border-radius: 24px; background: rgba(255,255,255,.92); box-shadow: 0 22px 65px rgba(76,29,149,.16); border: 1px solid #eadcf7; }
+    .mark { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 16px; color: white; font-size: 25px; font-weight: 800; background: linear-gradient(135deg,#7c3aed,#ec4899); box-shadow: 0 10px 26px rgba(124,58,237,.28); }
+    h1 { margin: 22px 0 8px; font-size: 24px; }
+    p { margin: 0; color: #725d85; line-height: 1.55; }
+    .track { height: 10px; margin: 26px 0 12px; overflow: hidden; border-radius: 999px; background: #eee5f5; }
+    .bar { height: 100%; width: 4%; border-radius: inherit; background: linear-gradient(90deg,#7c3aed,#ec4899); transition: width .25s ease; }
+    .row { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; font-weight: 700; color: #725d85; }
+    small { display: block; margin-top: 26px; color: #927fa1; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark">R</div>
+    <h1>Preparing ReelSave</h1>
+    <p id="detail">Checking the download engine…</p>
+    <div class="track"><div class="bar" id="bar"></div></div>
+    <div class="row"><span id="phase">Checking</span><span id="percent"></span></div>
+    <small>This one-time setup keeps future app updates smaller and faster.</small>
+  </main>
+  <script>
+    const labels = {
+      checking: ['Checking', 'Verifying the signed download package…'],
+      downloading: ['Downloading', 'Downloading the video and audio engine…'],
+      verifying: ['Verifying', 'Checking the package before installation…'],
+      installing: ['Finishing', 'Installing the engine in your ReelSave data folder…'],
+      ready: ['Ready', 'Opening ReelSave…'],
+    };
+    window.runtimeSetup.onProgress(value => {
+      const label = labels[value.phase] || labels.checking;
+      document.getElementById('phase').textContent = label[0];
+      document.getElementById('detail').textContent = label[1];
+      const percent = Number(value.percent) || 0;
+      document.getElementById('bar').style.width = `${Math.max(4, percent)}%`;
+      document.getElementById('percent').textContent = value.phase === 'downloading' ? `${percent}%` : '';
+    });
+  </script>
+</body>
+</html>

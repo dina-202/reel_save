@@ -73,7 +73,8 @@ export default function Updater() {
 
   const problem = error || info?.error;
   const available = (info?.available || appPending) && !updating;
-  const label = appBusy ? (appState.status === 'downloading' ? `App update ${appState.progress}%` : 'Verifying...')
+  const label = appBusy ? (appState.status === 'downloading' ? `App update ${appState.progress}%`
+    : appState.status === 'installing' ? 'Restarting...' : 'Verifying...')
     : appPending ? (appState.status === 'ready' ? 'Restart & update' : 'Update app')
     : updating ? 'Updating...' : busy ? 'Checking...' : problem ? 'Retry update'
     : available ? 'Update yt-dlp' : info ? 'Up to date' : 'Check updates';
@@ -81,6 +82,13 @@ export default function Updater() {
 
   return (
     <div className="rs-updater">
+      {appState?.status === 'installing' && <div className="rs-update-restart" role="alert" aria-live="assertive">
+        <div className="rs-update-restart__card">
+          <RefreshCw size={30} className="rs-updater__spin" />
+          <h2>Applying the update</h2>
+          <p>ReelSave will close briefly and reopen on its own. Your download engine and settings will stay in place.</p>
+        </div>
+      </div>}
       <button className={`rs-btn rs-btn--purple rs-updater__button${available ? ' is-available' : ''}`}
         onClick={update} disabled={busy || updating || appBusy} aria-label={label}
         title={available ? `yt-dlp ${info.latest} is available. Click to install.` : 'Check for yt-dlp updates'}>
@@ -92,16 +100,17 @@ export default function Updater() {
       {open && <div className="rs-updater__panel" id="update-details" role="status" aria-live="polite">
         {appState && <section className="rs-app-updates">
           <strong>ReelSave app</strong>
+          {appState.completedUpdate && <p className="rs-update-success"><CheckCircle2 size={15} /> Updated successfully to {appState.completedUpdate.toVersion}.</p>}
           <p>Installed: {appState.current}{appState.latest && ` / Latest: ${appState.latest}`}</p>
           <p>{appUpdate.error || (appState.status === 'error'
             ? appState.error || 'Could not check or install the app update. Please retry.'
-            : appState.status === 'ready' ? 'Signature verified. Restart to install silently; your settings and saved videos stay in place.'
+            : appState.status === 'ready' ? 'Signature verified. Restart to update silently; your settings and saved videos stay in place.'
               : appState.status === 'available' ? 'A new app version is available on GitHub.'
                 : appBusy ? (appState.status === 'installing' ? 'Installing silently and restarting ReelSave...' : `${appState.status === 'downloading' ? `Downloading ${appState.progress}%` : 'Verifying the signed installer...'} Keep ReelSave running.`)
                   : appState.status === 'current' ? 'You have the latest app version.' : 'Checking for app updates...')}</p>
           {appPending && <button className="rs-btn rs-btn--purple" disabled={updating || busy}
             onClick={() => appUpdate.action(appState.status === 'ready' ? 'installUpdate' : 'downloadUpdate')}>
-            {appState.status === 'ready' ? 'Restart & install' : 'Download app update'}
+            {appState.status === 'ready' ? 'Restart & update' : 'Download app update'}
           </button>}
           {!appBusy && !appPending && <button className="rs-updater__details" onClick={() => appUpdate.action('checkUpdate')}>Check app updates</button>}
         </section>}

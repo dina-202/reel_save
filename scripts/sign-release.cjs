@@ -20,7 +20,11 @@ async function main() {
   const installer = `ReelSave-Setup-${version}.exe`;
   const file = path.join(root, 'release', installer);
   const privateKey = process.env.REELSAVE_UPDATE_PRIVATE_KEY || fs.readFileSync(privateFile);
-  const bytes = Buffer.from(JSON.stringify({ version, installer, sha256: await sha256(file) }));
+  const runtimeFile = 'ReelSave-Runtime-Windows-x64-v1.zip';
+  const runtimePath = path.join(root, 'release', runtimeFile);
+  if (!fs.existsSync(runtimePath)) throw new Error(`Missing ${runtimeFile}. Run npm run package:runtime first.`);
+  const bytes = Buffer.from(JSON.stringify({ version, installer, sha256: await sha256(file),
+    runtime: { schema: 1, file: runtimeFile, sha256: await sha256(runtimePath) } }));
   const signature = crypto.sign(null, bytes, privateKey).toString('base64');
   await verifyUpdate({ file, manifestBytes: bytes, signature, publicKey: fs.readFileSync(publicFile), version });
   fs.writeFileSync(path.join(root, 'release/release-manifest.json'), bytes);

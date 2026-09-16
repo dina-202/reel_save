@@ -8,13 +8,13 @@ function fixture({ verify = async () => {}, beforeInstall = async () => () => Pr
   const calls = [];
   const reports = [];
   const updater = { on: (name, fn) => { listeners[name] = fn; }, quitAndInstall: (...args) => calls.push(args) };
-  const context = { module: { exports: {} }, __dirname, Buffer, AbortSignal, setImmediate,
+  const context = { module: { exports: {} }, __dirname, Buffer, AbortSignal, setImmediate, setTimeout,
     fetch: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(0), text: async () => 'signature' }),
     require: name => name === 'electron-updater' ? { autoUpdater: updater }
       : name === './verify-update.cjs' ? { verifyUpdate: verify } : require(name) };
   vm.runInNewContext(fs.readFileSync(require.resolve('./app-updater.cjs'), 'utf8'), context);
   const app = context.module.exports.createUpdater({ getVersion: () => '1.0.3', isPackaged: true }, beforeInstall,
-    event => reports.push(event));
+    event => reports.push(event), { installDelayMs: 0 });
   return { app, listeners, calls, reports, updater };
 }
 
@@ -25,7 +25,7 @@ test('only a verified update installs silently and forces app restart', async ()
   assert.equal(calls.length, 0);
   await listeners['update-downloaded']({ version: '1.0.4', downloadedFile: 'test.exe' });
   await app.install();
-  await new Promise(setImmediate);
+  await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(reserved, true);
   assert.deepEqual(calls, [[true, true]]);
 });
@@ -49,7 +49,7 @@ test('active transfers prevent silent install; installer failure releases restar
   failure.updater.quitAndInstall = () => { throw new Error('installer failed'); };
   await failure.listeners['update-downloaded']({ version: '1.0.4' });
   await failure.app.install();
-  await new Promise(setImmediate);
+  await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(released, true);
   assert.equal(failure.app.status().status, 'error');
 });

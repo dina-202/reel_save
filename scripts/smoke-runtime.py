@@ -12,7 +12,7 @@ import urllib.request
 root = Path(__file__).resolve().parents[1]
 resources = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else root
 packaged = resources != root
-runtime = resources / ('runtime' if packaged else 'build/runtime')
+runtime = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 and sys.argv[2] != '--live' else resources / ('runtime' if packaged else 'build/runtime')
 backend = resources / 'backend' if packaged else root
 ui = resources / 'frontend' if packaged else root / 'frontend/dist'
 token = secrets.token_hex(32)

@@ -11,7 +11,7 @@ A Windows desktop app for saving videos as MP4 and audio as MP3.
 3. Choose MP4 video or MP3 audio, select a quality, and set your download location.
 4. Paste one link to download immediately, or paste up to 50 links on separate lines for a bulk queue.
 
-ReelSave includes Python, yt-dlp, FFmpeg, and Node. No separate dependencies are needed. The installer targets Windows 10/11 x64.
+ReelSave sets up Python, yt-dlp, FFmpeg, and Node automatically. On the first launch, it downloads and verifies the signed download engine once. No separate dependencies are needed. The installer targets Windows 10/11 x64.
 
 ## Features
 
@@ -21,7 +21,7 @@ ReelSave includes Python, yt-dlp, FFmpeg, and Node. No separate dependencies are
 - Paste-to-download and sequential bulk downloads of up to 50 links per batch.
 - A glowing update button when a newer downloader or app version is available.
 - Separate yt-dlp updates and signed application updates through GitHub Releases.
-- Silent installation of app updates followed by a restart.
+- Smaller background app updates with silent installation, automatic restart, and a post-update success check.
 - Privacy-filtered local diagnostics with a preview before opening a public GitHub report.
 
 Source availability and platform restrictions can affect individual downloads. Keep ReelSave open until your download or update finishes.
@@ -34,7 +34,7 @@ Pasting with **Ctrl+V** or the **Paste** button starts the download immediately.
 
 ## Updates
 
-Open **Update details** to check downloader and app versions. Downloader updates apply without restarting. App updates are downloaded and verified before **Restart & install** becomes available. Starting with version 1.0.3, installing the next update runs silently and restarts ReelSave. Your saved files and settings remain in place. The first installation still uses the setup wizard. Updating from 1.0.2 may show the wizard once because the older app starts that installer.
+Open **Update details** to check downloader and app versions. Downloader updates apply without restarting. App updates download in the background and are verified before **Restart & update** becomes available. ReelSave then closes briefly, installs silently, reopens, and confirms the new version started successfully. The large download engine lives in the ReelSave data folder and is reused, so later app-only updates do not replace it. Version 1.0.5 performs a one-time engine setup during this migration and removes obsolete per-version engine copies after a healthy start.
 
 ## Reporting problems
 
