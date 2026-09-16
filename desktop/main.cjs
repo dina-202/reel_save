@@ -9,6 +9,9 @@ const { pipeline } = require('node:stream/promises');
 const { createUpdater } = require('./app-updater.cjs');
 const { createDiagnostics } = require('./diagnostics.cjs');
 const { createDownloadSettings, filenameFromDisposition, friendlyDownloadError } = require('./download-settings.cjs');
+const { ensureRuntime, runtimeReady, cleanupLegacyRuntimes, RUNTIME_SCHEMA } = require('./runtime-manager.cjs');
+const { ensureStableShortcut } = require('./shortcut-manager.cjs');
+const { createUpdateHealth } = require('./update-health.cjs');
 
 let backend;
 let window;
@@ -25,7 +28,9 @@ else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
   app.whenReady().then(start).catch(error => {
     diagnostics?.capture({ stage: 'startup', code: 'startup_failed' });
-    dialog.showErrorBox('ReelSave could not start', error.message); app.quit();
+    dialog.showErrorBox('ReelSave could not start', error.message);
+    quitting = true;
+    app.quit();
   });
 }
 
@@ -39,20 +44,39 @@ async function api(route, options = {}) {
 }
 
 async function start() {
+  await fs.promises.mkdir(app.getPath('userData'), { recursive: true });
+  const updateHealth = createUpdateHealth(app.getPath('userData'), app.getVersion());
   diagnostics = createDiagnostics({ directory: app.getPath('userData'), appVersion: app.getVersion(),
     electronVersion: process.versions.electron, windowsVersion: require('node:os').release(), arch: process.arch,
     openExternal: url => shell.openExternal(url) });
   downloadSettings = createDownloadSettings({ dataDir: app.getPath('userData'), defaultFolder: app.getPath('downloads') });
-  await fs.promises.mkdir(app.getPath('userData'), { recursive: true });
   const desktopLog = message => fs.appendFileSync(path.join(app.getPath('userData'), 'desktop.log'), `${new Date().toISOString()} ${message}\n`);
   const resources = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
-  const runtime = app.isPackaged ? path.join(resources, 'runtime') : path.join(resources, 'build/runtime');
-  const pythonDir = path.join(app.getPath('userData'), 'runtime', app.getVersion(), 'python');
-  if (!fs.existsSync(path.join(pythonDir, '.ready'))) {
-    await fs.promises.mkdir(pythonDir, { recursive: true });
-    await fs.promises.cp(path.join(runtime, 'python'), pythonDir, { recursive: true });
-    await fs.promises.writeFile(path.join(pythonDir, '.ready'), app.getVersion());
+  let runtime = path.join(resources, 'build/runtime');
+  let runtimeWindow;
+  if (app.isPackaged) {
+    const sharedRuntime = path.join(app.getPath('userData'), 'runtime', `shared-v${RUNTIME_SCHEMA}`);
+    if (!runtimeReady(sharedRuntime)) {
+      runtimeWindow = new BrowserWindow({ width: 540, height: 480, resizable: false, maximizable: false,
+        title: 'Preparing ReelSave', icon: path.join(__dirname, 'icon.png'), backgroundColor: '#faf5ff', autoHideMenuBar: true,
+        webPreferences: { preload: path.join(__dirname, 'runtime-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+      window = runtimeWindow;
+      runtimeWindow.on('close', event => { if (!quitting && !runtimeReady(sharedRuntime)) event.preventDefault(); });
+      await runtimeWindow.loadFile(path.join(__dirname, 'runtime-setup.html'));
+    }
+    while (true) {
+      try {
+        runtime = await ensureRuntime({ dataDir: app.getPath('userData'), publicKey: fs.readFileSync(path.join(__dirname, 'update-public-key.pem')),
+          onProgress: progress => runtimeWindow?.webContents.send('runtime-progress', progress) });
+        break;
+      } catch (error) {
+        const choice = await dialog.showMessageBox(runtimeWindow, { type: 'error', buttons: ['Retry', 'Close ReelSave'], defaultId: 0, cancelId: 1,
+          message: 'ReelSave could not prepare its download engine.', detail: `${error.message}\n\nCheck your internet connection and try again.` });
+        if (choice.response !== 0) throw error;
+      }
+    }
   }
+  const pythonDir = path.join(runtime, 'python');
   const backendDir = app.isPackaged ? path.join(resources, 'backend') : resources;
   const log = fs.createWriteStream(path.join(app.getPath('userData'), 'backend.log'), { flags: 'a' });
   backend = spawn(path.join(pythonDir, 'python.exe'), [path.join(backendDir, 'desktop_server.py')], {
@@ -94,15 +118,17 @@ async function start() {
     callback({ requestHeaders: details.requestHeaders });
   });
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  const updater = createUpdater(app, async () => {
+  const updater = createUpdater(app, async targetVersion => {
     const status = await api('/updates');
     await api('/updates/prepare-restart', { method: 'POST', headers: { 'X-ReelSave-Update-Token': status.token } });
+    updateHealth.markPending(targetVersion);
     restartApproved = true;
     return async () => {
       restartApproved = false;
+      updateHealth.cancelPending();
       await api('/updates/cancel-restart', { method: 'POST', headers: { 'X-ReelSave-Update-Token': status.token } });
     };
-  }, event => diagnostics.capture(event));
+  }, event => diagnostics.capture(event), { completedUpdate: updateHealth.completedUpdate });
   ipcMain.handle('clipboard:read', event => {
     if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(`${baseUrl}/`)) throw new Error('Clipboard access is only available in ReelSave.');
     return clipboard.readText();
@@ -217,6 +243,12 @@ async function start() {
     app.quit();
   });
   await window.loadURL(baseUrl);
+  if (runtimeWindow && !runtimeWindow.isDestroyed()) runtimeWindow.close();
+  await ensureStableShortcut({ app, shell, sourceIcon: path.join(__dirname, 'icon.ico') }).catch(error => desktopLog(`Shortcut refresh failed: ${error.message}`));
+  updateHealth.markHealthy();
+  cleanupLegacyRuntimes(app.getPath('userData')).then(count => {
+    if (count) desktopLog(`Removed ${count} legacy runtime director${count === 1 ? 'y' : 'ies'}.`);
+  }).catch(error => desktopLog(`Legacy runtime cleanup failed: ${error.message}`));
   desktopLog(`Desktop window loaded successfully; bundled engine listening on ${baseUrl}.`);
   updater.check();
   const timer = setInterval(() => updater.check(), 60 * 60 * 1000);

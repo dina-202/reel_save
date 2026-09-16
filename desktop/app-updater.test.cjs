@@ -21,7 +21,8 @@ function harness({ valid = true, beforeInstall = async () => async () => {} } = 
     },
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'app-updater.cjs'), 'utf8'), context);
-  const updater = context.module.exports.createUpdater({ getVersion: () => '1.0.0', isPackaged: true }, beforeInstall);
+  context.setTimeout = setTimeout;
+  const updater = context.module.exports.createUpdater({ getVersion: () => '1.0.0', isPackaged: true }, beforeInstall, () => {}, { installDelayMs: 0 });
   return { engine, updater, installed: () => installed };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -40,7 +41,7 @@ test('app update only installs after download, verification, and restart reserva
   await tick();
   assert.equal(updater.status().status, 'ready');
   await updater.install();
-  await tick();
+  await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(reserved, 1);
   assert.equal(installed(), 1);
 });

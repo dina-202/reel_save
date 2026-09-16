@@ -3,8 +3,9 @@ const path = require('node:path');
 const { autoUpdater } = require('electron-updater');
 const { verifyUpdate } = require('./verify-update.cjs');
 
-function createUpdater(app, beforeInstall, reportError = () => {}) {
-  let state = { current: app.getVersion(), status: 'idle', latest: null, progress: 0, error: null };
+function createUpdater(app, beforeInstall, reportError = () => {}, options = {}) {
+  let state = { current: app.getVersion(), status: 'idle', latest: null, progress: 0, error: null,
+    completedUpdate: options.completedUpdate || null };
   let checking = false;
   let verified = false;
   let releaseRestart;
@@ -21,7 +22,7 @@ function createUpdater(app, beforeInstall, reportError = () => {}) {
   autoUpdater.on('update-not-available', () => { state = { ...state, status: 'current', error: null }; });
   autoUpdater.on('download-progress', progress => { state = { ...state, status: 'downloading', progress: Math.round(progress.percent) }; });
   autoUpdater.on('update-downloaded', async info => {
-    state = { ...state, status: 'verifying' };
+    state = { ...state, status: 'verifying', latest: info.version };
     try {
       if (!/^\d+\.\d+\.\d+$/.test(info.version)) throw new Error('Invalid release version.');
       const base = `https://github.com/dina-202/reel_save/releases/download/v${info.version}`;
@@ -55,9 +56,9 @@ function createUpdater(app, beforeInstall, reportError = () => {}) {
     },
     async install() {
       if (!verified || state.status !== 'ready') throw new Error('Download and verify the app update first.');
-      releaseRestart = await beforeInstall();
-      state = { ...state, status: 'installing' };
-      setImmediate(() => { try { autoUpdater.quitAndInstall(true, true); } catch (error) { fail(error); } });
+      releaseRestart = await beforeInstall(state.latest);
+      state = { ...state, status: 'installing', installPhase: 'restarting' };
+      setTimeout(() => { try { autoUpdater.quitAndInstall(true, true); } catch (error) { fail(error); } }, options.installDelayMs ?? 1200);
       return state;
     },
   };
