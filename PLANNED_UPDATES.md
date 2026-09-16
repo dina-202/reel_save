@@ -11,3 +11,7 @@ Implemented in version 1.0.5:
 - Smaller app-only updates: keep the large media runtime in a shared per-user folder and distribute it as a separately signed package.
 - Smoother restarts: show an update transition, install silently, relaunch automatically, and confirm successful startup.
 - Stable desktop icon: keep the shortcut icon outside the replaceable app directory and avoid the installer's global desktop icon refresh.
+
+Implemented in version 1.0.6:
+
+- Replaced the web wordmark, setup artwork, window icon, shortcut icon, and installer icon with the supplied ReelSave film-ribbon logo.

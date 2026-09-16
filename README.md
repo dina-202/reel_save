@@ -54,6 +54,7 @@ See [DESKTOP.md](DESKTOP.md) for building the Windows installer, running checks,
 - `desktop_server.py`: authenticated private connection between Electron and the engine.
 - `updater.py`: bundled downloader updates and operation coordination.
 - `scripts/`: runtime preparation, packaging, signing, and verification.
+- `assets/brand/reelsave-logo-source.png`: original source for the generated web, window, shortcut, and installer icons.
 
 The installer does not yet have a Windows publisher certificate; Windows may display an unknown-publisher notice. Update manifests are signed separately and checked by the app.
 
