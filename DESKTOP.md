@@ -7,14 +7,14 @@ The Windows x64 installer contains the Electron application. On first launch, th
 ```powershell
 npm ci
 npm ci --prefix frontend
-npm run prepare:runtime
 npm run test:desktop
-npm run package:runtime
 npm run build:desktop
 npm run sign:release
 ```
 
-The installer is `release/ReelSave-Setup-1.0.5.exe`; the separate engine is `release/ReelSave-Runtime-Windows-x64-v1.zip`. Build resources and outputs are ignored by Git. Runtime inputs come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds. Licenses and source references are included in the runtime archive.
+The installer is written to `release/ReelSave-Setup-<version>.exe`. The shared engine is pinned to the signed `ReelSave-Runtime-Windows-x64-v1.zip` asset in release `v1.0.5`, so ordinary app-only releases do not rebuild or upload it. Build resources and outputs are ignored by Git.
+
+When the runtime itself changes, run `npm run prepare:runtime`, `npm run package:runtime`, and `npm run sign:runtime-release`, then publish the runtime archive with the signed manifest. Runtime inputs come from Python.org, Nodejs.org, PyPA, and Gyan's FFmpeg builds; licenses and source references are included in the archive.
 
 ## Two separate update paths
 
@@ -37,10 +37,10 @@ These update signatures are separate from Windows Authenticode signing. The loca
 
 ## Publish a new version later
 
-1. Change the root `package.json` version (for example `1.0.5`) and refresh the lockfile with `npm install --package-lock-only`.
-2. Run the build, runtime packaging, and signing commands above.
-3. Create a GitHub Release tagged exactly `v1.0.5`.
-4. Upload the installer `.exe`, its `.blockmap`, `latest.yml`, `ReelSave-Runtime-Windows-x64-v1.zip`, `release-manifest.json`, and `release-manifest.sig` from the same build. Do not modify any package after signing the manifest.
+1. Change the root `package.json` version and refresh the lockfile with `npm install --package-lock-only`.
+2. Run the app build and signing commands above.
+3. Create a GitHub Release tagged exactly `v<version>`.
+4. Upload the installer `.exe`, its `.blockmap`, `latest.yml`, `release-manifest.json`, and `release-manifest.sig` from the same build. Do not modify the installer after signing the manifest.
 5. Publish the release when ready. Installed copies check on launch and hourly, or when the user clicks **Check app updates**.
 
 `.github/workflows/release.yml` automates the build and creates a **draft** release for version tags. Before using it, add the existing private key as the repository Actions secret `REELSAVE_UPDATE_PRIVATE_KEY`. Do not paste it into source files or commit it. CI does not publish the draft automatically.

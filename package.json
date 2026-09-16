@@ -1,6 +1,6 @@
 {
   "name": "reelsave",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Personal video and audio downloader for Windows",
   "author": "dina-202",
   "private": true,
@@ -8,12 +8,14 @@
   "repository": "https://github.com/dina-202/reel_save",
   "scripts": {
     "desktop": "npm run build:ui && electron .",
+    "generate:brand": "node scripts/generate-brand-assets.cjs",
     "prepare:runtime": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-runtime.ps1",
     "package:runtime": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-runtime.ps1",
     "build:ui": "node scripts/build-ui.cjs",
     "build:desktop": "npm run build:ui && electron-builder --win nsis --x64 --publish never",
     "test:desktop": "node --test desktop/*.test.cjs",
-    "sign:release": "node scripts/sign-release.cjs"
+    "sign:release": "node scripts/sign-release.cjs",
+    "sign:runtime-release": "node scripts/sign-release.cjs --include-runtime"
   },
   "dependencies": {
     "electron-updater": "^6.6.2"

@@ -17,7 +17,10 @@ export default function Footer() {
       <div className="rs-wrap">
         <div className="rs-footer__top">
           <div className="rs-footer__brand">
-            <img src="/assets/logo-full-white.svg" alt="ReelSave" />
+            <div className="rs-footer__logo">
+              <img src="/assets/logo-mark.png" alt="" />
+              <span>ReelSave</span>
+            </div>
             <p>Your personal video and audio downloader. Run it on your PC and keep your favorites close.</p>
           </div>
           {COLS.map((col) => (

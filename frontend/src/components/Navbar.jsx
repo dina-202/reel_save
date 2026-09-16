@@ -16,7 +16,8 @@ export default function Navbar() {
     <nav className={'rs-nav' + (scrolled ? ' rs-nav--scrolled' : '')}>
       <div className="rs-wrap rs-nav__inner">
         <a className="rs-nav__logo" href="#top" aria-label="ReelSave home">
-          <img src="/assets/logo-full.svg" alt="ReelSave" />
+          <img src="/assets/logo-mark.png" alt="" />
+          <span>Reel<strong>Save</strong></span>
         </a>
         <div className="rs-nav__links">
           <a className="rs-nav__link" href="#how">How it Works</a>
