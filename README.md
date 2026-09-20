@@ -8,7 +8,7 @@ Paste a link, choose your format and quality, and ReelSave handles the rest.
 
 > Windows 10/11 • 64-bit
 
-<img width="1897" height="992" alt="image" src="https://github.com/user-attachments/assets/9016dd45-e762-4aa6-87e7-27599430859b" />
+<img width="1900" height="985" alt="image" src="https://github.com/user-attachments/assets/e9f15193-f862-4d39-b537-6cbe18bbcddc" />
 
 ---
 
