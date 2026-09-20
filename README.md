@@ -272,6 +272,18 @@ ReelSave is not affiliated with Instagram, Meta, TikTok, YouTube, Google, or the
 
 ---
 
+## Code Signing Policy
+
+Official ReelSave Windows releases are built from the public source code in this repository.
+
+Release binaries are signed only for official tagged releases produced from the repository's build workflow.
+
+Signing credentials are never stored in the repository or distributed with the application.
+
+The purpose of code signing is to verify that published ReelSave binaries come from the official project and have not been modified after signing.
+
+---
+
 ## License
 
 ReelSave is released under the **MIT License**.
