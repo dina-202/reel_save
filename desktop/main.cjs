@@ -20,6 +20,7 @@ let quitting = false;
 let restartApproved = false;
 let diagnostics;
 let downloadSettings;
+let activeMediaAbort;
 const token = crypto.randomBytes(32).toString('hex');
 if (process.env.REELSAVE_DATA_DIR) app.setPath('userData', path.resolve(process.env.REELSAVE_DATA_DIR));
 app.setAppUserModelId('com.dina202.reelsave');
@@ -155,6 +156,34 @@ async function start() {
     if (error) throw new Error('Windows could not open the download folder.');
     return { opened: true };
   });
+  ipcMain.handle('media:playlist', async (event, request) => {
+    if (!fromReelSave(event)) throw new Error('Playlist tools are only available in ReelSave.');
+    let source;
+    try { source = new URL(request?.url); } catch { throw new Error('Enter a valid playlist link.'); }
+    if (!['http:', 'https:'].includes(source.protocol) || source.href.length > 5000) throw new Error('Enter a valid playlist link.');
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/api/playlist`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
+        body: JSON.stringify({ url: source.href }), signal: AbortSignal.timeout(3 * 60 * 1000),
+      });
+    } catch {
+      throw new Error('ReelSave could not inspect this playlist. Check your connection and try again.');
+    }
+    if (!response.ok) {
+      let message = `Playlist check failed (${response.status}).`;
+      try { const body = await response.json(); if (typeof body.detail === 'string') message = body.detail; } catch { /* Keep generic error. */ }
+      throw new Error(friendlyDownloadError(message, response.status));
+    }
+    return response.json();
+  });
+  ipcMain.handle('media:cancel', async event => {
+    if (!fromReelSave(event)) throw new Error('Downloads can only be stopped from ReelSave.');
+    const controller = activeMediaAbort;
+    controller?.abort();
+    const result = await api('/downloads/cancel', { method: 'POST' });
+    return { stopped: Boolean(controller) || result.stopped };
+  });
   ipcMain.handle('media:download', async (event, request) => {
     if (!fromReelSave(event)) throw new Error('Downloads are only available in ReelSave.');
     const format = request?.format === 'audio' ? 'audio' : request?.format === 'video' ? 'video' : null;
@@ -163,33 +192,46 @@ async function start() {
     let source;
     try { source = new URL(request?.url); } catch { throw new Error('Enter a valid video link.'); }
     if (!['http:', 'https:'].includes(source.protocol) || source.href.length > 5000) throw new Error('Enter a valid video link.');
-    let response;
-    try {
-      response = await fetch(`${baseUrl}/api/download-${format}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
-        body: JSON.stringify({ url: source.href, format, quality: request.quality }), signal: AbortSignal.timeout(15 * 60 * 1000),
-      });
-    } catch {
-      diagnostics.capture({ stage: 'engine', code: 'network_error' });
-      throw new Error('ReelSave lost its connection to the download engine. Reopen the app and try again.');
+    const playlistIndex = request?.playlistIndex == null ? null : Number(request.playlistIndex);
+    if (playlistIndex != null && (!Number.isInteger(playlistIndex) || playlistIndex < 1 || playlistIndex > 200)) {
+      throw new Error('Choose a valid playlist item.');
     }
-    if (!response.ok) {
-      let message = `Download failed (${response.status}).`;
-      try { const body = await response.json(); if (typeof body.detail === 'string') message = body.detail; } catch { /* Keep generic error. */ }
-      throw new Error(friendlyDownloadError(message, response.status));
-    }
-    const extension = format === 'audio' ? 'mp3' : 'mp4';
-    const filename = filenameFromDisposition(response.headers.get('content-disposition'), `download.${extension}`);
-    const destination = await downloadSettings.destination(filename, `download.${extension}`);
+    const controller = new AbortController();
+    activeMediaAbort = controller;
     try {
-      if (!response.body) throw new Error('The download returned no file data.');
-      await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination, { flags: 'wx' }));
-      return { filename: path.basename(destination), folder: path.dirname(destination) };
-    } catch {
-      diagnostics.capture({ stage: 'save', code: 'save_interrupted' });
-      try { await fs.promises.unlink(destination); } catch { /* No partial file to remove. */ }
-      throw new Error('ReelSave could not save the file. Check the folder access and available disk space.');
-    } finally { downloadSettings.release(destination); }
+      let response;
+      try {
+        response = await fetch(`${baseUrl}/api/download-${format}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
+          body: JSON.stringify({ url: source.href, format, quality: request.quality, playlist_index: playlistIndex }),
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15 * 60 * 1000)]),
+        });
+      } catch {
+        if (controller.signal.aborted) throw new Error('Download stopped.');
+        diagnostics.capture({ stage: 'engine', code: 'network_error' });
+        throw new Error('ReelSave lost its connection to the download engine. Reopen the app and try again.');
+      }
+      if (!response.ok) {
+        let message = `Download failed (${response.status}).`;
+        try { const body = await response.json(); if (typeof body.detail === 'string') message = body.detail; } catch { /* Keep generic error. */ }
+        throw new Error(friendlyDownloadError(message, response.status));
+      }
+      const extension = format === 'audio' ? 'mp3' : 'mp4';
+      const filename = filenameFromDisposition(response.headers.get('content-disposition'), `download.${extension}`);
+      const destination = await downloadSettings.destination(filename, `download.${extension}`);
+      try {
+        if (!response.body) throw new Error('The download returned no file data.');
+        await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination, { flags: 'wx' }));
+        return { filename: path.basename(destination), folder: path.dirname(destination) };
+      } catch {
+        try { await fs.promises.unlink(destination); } catch { /* No partial file to remove. */ }
+        if (controller.signal.aborted) throw new Error('Download stopped.');
+        diagnostics.capture({ stage: 'save', code: 'save_interrupted' });
+        throw new Error('ReelSave could not save the file. Check the folder access and available disk space.');
+      } finally { downloadSettings.release(destination); }
+    } finally {
+      if (activeMediaAbort === controller) activeMediaAbort = null;
+    }
   });
   for (const [name, handler] of Object.entries({
     list: () => diagnostics.list(), clear: () => diagnostics.clear(), open: id => diagnostics.open(id),

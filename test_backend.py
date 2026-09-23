@@ -3,7 +3,7 @@ import os
 import subprocess
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 import backend
@@ -54,16 +54,33 @@ class DownloadTests(unittest.TestCase):
         self.client = TestClient(backend.app)
 
     def test_extractor_error_is_visible(self):
-        with patch('backend.subprocess.run', return_value=SimpleNamespace(returncode=1, stderr='Video unavailable')):
+        process = MagicMock(returncode=1)
+        process.communicate.return_value = ('', 'Video unavailable')
+        with patch('backend.subprocess.Popen', return_value=process):
             response = self.client.post('/download', json={'url': 'https://youtu.be/example'})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['detail'], 'Video unavailable')
 
     def test_timeout_is_json(self):
-        with patch('backend.subprocess.run', side_effect=subprocess.TimeoutExpired('yt-dlp', 120)):
+        process = MagicMock(returncode=1, pid=123)
+        process.communicate.side_effect = [subprocess.TimeoutExpired('yt-dlp', 120), ('', '')]
+        process.poll.return_value = None
+        with patch('backend.subprocess.Popen', return_value=process), patch('backend._terminate_process_tree'):
             response = self.client.post('/download', json={'url': 'https://youtu.be/example'})
         self.assertEqual(response.status_code, 504)
         self.assertIn('timed out', response.json()['detail'])
+
+    def test_cancelled_process_returns_stopped_response(self):
+        process = MagicMock(returncode=1, pid=123)
+        def communicate(timeout=None):
+            backend.cancel_active_download()
+            return ('', 'terminated')
+        process.communicate.side_effect = communicate
+        process.poll.return_value = None
+        with patch('backend.subprocess.Popen', return_value=process), patch('backend._terminate_process_tree'):
+            response = self.client.post('/download', json={'url': 'https://youtu.be/example'})
+        self.assertEqual(response.status_code, 499)
+        self.assertEqual(response.json()['detail'], 'Download stopped.')
 
     def test_split_stream_metadata_supported(self):
         info = {'title': 'Example', 'requested_formats': [{'url': 'video'}, {'url': 'audio'}]}
@@ -108,6 +125,49 @@ class DownloadTests(unittest.TestCase):
 
     def test_mp4_stream_and_cleanup(self):
         self.check_file(False)
+
+    def test_playlist_items_are_returned_for_review(self):
+        info = {'title': 'My playlist', 'playlist_count': 2, 'entries': [
+            {'title': 'First', 'playlist_index': 1, 'duration': 65},
+            {'title': 'Second', 'playlist_index': 2, 'duration': 90},
+        ]}
+        with patch('backend.run_ytdlp', return_value=SimpleNamespace(stdout=json.dumps(info))) as run:
+            response = self.client.post('/playlist', json={'url': 'https://example.com/playlist/1'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['is_playlist'])
+        self.assertEqual([item['title'] for item in response.json()['items']], ['First', 'Second'])
+        self.assertTrue(run.call_args.kwargs['allow_playlist'])
+
+    def test_selected_playlist_item_downloads_alone(self):
+        captured = {}
+        def produce(args, timeout, allow_playlist):
+            captured.update(args=args, allow_playlist=allow_playlist)
+            template = args[args.index('-o') + 1]
+            path = os.path.join(os.path.dirname(template), 'Chosen [test].mp4')
+            with open(path, 'wb') as file:
+                file.write(b'chosen-item')
+        with patch('backend.shutil.which', return_value='ffmpeg'), patch('backend.run_ytdlp', side_effect=produce):
+            response = self.client.post('/download-video', json={
+                'url': 'https://example.com/playlist/1', 'playlist_index': 2,
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured['args'][captured['args'].index('--playlist-items') + 1], '2')
+        self.assertTrue(captured['allow_playlist'])
+
+    def test_cancel_marks_active_process_and_terminates_it(self):
+        process = MagicMock()
+        active = {'process': process, 'cancelled': False}
+        with backend._process_state_lock:
+            backend._active_process = active
+        try:
+            with patch('backend._terminate_process_tree') as terminate:
+                response = self.client.post('/downloads/cancel')
+            self.assertEqual(response.json(), {'stopped': True})
+            self.assertTrue(active['cancelled'])
+            terminate.assert_called_once_with(process)
+        finally:
+            with backend._process_state_lock:
+                backend._active_process = None
 
 
 if __name__ == '__main__':

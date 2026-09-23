@@ -50,8 +50,8 @@ def emit_report(stage, error, request=None):
         except PackageNotFoundError:
             downloader = 'unknown'
         status = getattr(error, 'status_code', 0)
-        if status in (409, 422):
-            return  # Expected busy state or invalid input, not a product failure.
+        if status in (409, 422, 499):
+            return  # Expected busy, invalid input, or a user-requested stop.
         payload = {'stage': stage, 'code': error_code(error), 'downloader': downloader,
                    'http_status': status if isinstance(status, int) else 0}
         if request is not None:
