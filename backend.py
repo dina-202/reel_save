@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pathlib import Path
 import json
 import os
@@ -14,6 +14,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+from types import SimpleNamespace
 from updater import router as updater_router, operation_lock, begin_transfer, finish_transfer
 from diagnostics import diagnostic_operation
 
@@ -48,30 +50,79 @@ def detect_platform(url: str) -> str:
     return "Unknown"
 
 
-def run_ytdlp(args: list[str], timeout: int = 120):
+_process_state_lock = threading.Lock()
+_active_process: dict | None = None
+
+
+def run_ytdlp(args: list[str], timeout: int = 120, allow_playlist: bool = False):
     if not operation_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="A download or update is running. Please retry when it finishes.")
     try:
-        return _run_ytdlp(args, timeout)
+        return _run_ytdlp(args, timeout, allow_playlist)
     finally:
         operation_lock.release()
 
 
-def _run_ytdlp(args: list[str], timeout: int = 120):
-    cmd = [sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist",
+def _terminate_process_tree(process):
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/pid", str(process.pid), "/T", "/F"],
+                       capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def cancel_active_download() -> bool:
+    with _process_state_lock:
+        active = _active_process
+        if active is None:
+            return False
+        active["cancelled"] = True
+        process = active["process"]
+    _terminate_process_tree(process)
+    return True
+
+
+def _run_ytdlp(args: list[str], timeout: int = 120, allow_playlist: bool = False):
+    playlist_option = "--yes-playlist" if allow_playlist else "--no-playlist"
+    cmd = [sys.executable, "-m", "yt_dlp", "--ignore-config", playlist_option,
            "--socket-timeout", "30"]
     if shutil.which("node"):
         cmd += ["--js-runtimes", "node"]
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if os.name == "nt":
+        flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    process = None
+    active = None
     try:
-        result = subprocess.run(cmd + args, capture_output=True, text=True,
-                                encoding="utf-8", errors="replace", timeout=timeout,
-                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        process = subprocess.Popen(cmd + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, encoding="utf-8", errors="replace",
+                                   creationflags=flags)
+        active = {"process": process, "cancelled": False}
+        global _active_process
+        with _process_state_lock:
+            _active_process = active
+        stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        if process is not None:
+            _terminate_process_tree(process)
+            process.communicate()
         raise HTTPException(status_code=504, detail="The download timed out. Try again or choose a shorter video.")
-    if result.returncode != 0:
-        detail = result.stderr.strip() or "yt-dlp could not download this video."
+    finally:
+        with _process_state_lock:
+            if _active_process is active:
+                _active_process = None
+    if active and active["cancelled"]:
+        raise HTTPException(status_code=499, detail="Download stopped.")
+    if process.returncode != 0:
+        detail = stderr.strip() or "yt-dlp could not download this video."
         raise HTTPException(status_code=400, detail=detail[-1500:])
-    return result
+    return SimpleNamespace(returncode=process.returncode, stdout=stdout, stderr=stderr)
 
 
 def video_options(quality: str) -> list[str]:
@@ -146,6 +197,7 @@ class DownloadRequest(BaseModel):
     url: str
     format: Literal["video", "audio"] = "video"
     quality: Literal["hd", "sd", "hi", "lo"] = "hd"
+    playlist_index: int | None = Field(default=None, ge=1, le=200)
 
 
 class DownloadResponse(BaseModel):
@@ -177,6 +229,50 @@ def download(req: DownloadRequest):
     return info
 
 
+@app.post("/playlist")
+def playlist(req: DownloadRequest):
+    if not req.url.strip():
+        raise HTTPException(status_code=400, detail="URL is required.")
+    with diagnostic_operation("metadata", req):
+        result = run_ytdlp(["--flat-playlist", "--dump-single-json", "--playlist-end", "200",
+                            "--", req.url.strip()], timeout=180, allow_playlist=True)
+        try:
+            info = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Failed to read playlist information.")
+    entries = info.get("entries")
+    if not isinstance(entries, list):
+        return {"is_playlist": False, "title": info.get("title") or "Video", "items": []}
+    items = []
+    for fallback_index, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict):
+            continue
+        index = entry.get("playlist_index") or fallback_index
+        try:
+            index = int(index)
+        except (TypeError, ValueError):
+            index = fallback_index
+        duration = entry.get("duration")
+        try:
+            duration = int(duration) if duration is not None else None
+        except (TypeError, ValueError):
+            duration = None
+        items.append({"index": index, "title": entry.get("title") or f"Item {index}",
+                      "duration": duration})
+    total = info.get("playlist_count") or info.get("n_entries") or len(items)
+    try:
+        total = int(total)
+    except (TypeError, ValueError):
+        total = len(items)
+    return {"is_playlist": True, "title": info.get("title") or "Playlist", "items": items,
+            "total": total, "truncated": total > len(items)}
+
+
+@app.post("/downloads/cancel")
+def cancel_download():
+    return {"stopped": cancel_active_download()}
+
+
 def download_file(req: DownloadRequest, audio: bool):
     if not req.url.strip():
         raise HTTPException(status_code=400, detail="URL is required.")
@@ -198,7 +294,12 @@ def download_file(req: DownloadRequest, audio: bool):
         else:
             args += [*video_options(req.quality), "--merge-output-format", "mp4",
                      "--recode-video", "mp4"]
-        run_ytdlp(args + ["--", req.url.strip()], timeout=600)
+        if req.playlist_index is not None:
+            args += ["--playlist-items", str(req.playlist_index)]
+        if req.playlist_index is None:
+            run_ytdlp(args + ["--", req.url.strip()], timeout=600)
+        else:
+            run_ytdlp(args + ["--", req.url.strip()], timeout=600, allow_playlist=True)
         ext = "mp3" if audio else "mp4"
         matches = sorted(Path(tmpdir.name).glob(f"*.{ext}"))
         if len(matches) != 1:

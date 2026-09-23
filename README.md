@@ -41,6 +41,12 @@ Audio options:
 * 128 kbps MP3
 * 320 kbps MP3
 
+### Playlist Review and Queue Controls
+
+Turn on **Playlist** before pasting a playlist link. ReelSave shows the available items first so you can select, remove, or reorder them before downloading. Obvious playlist links make the Playlist button glow so they do not auto-start by surprise.
+
+Use **Stop** to safely end the current transfer and pause the remaining queue. **Resume** restarts the stopped item from the beginning, while **Clear queue** keeps files that were already saved. Individual waiting, completed, or failed entries can also be removed.
+
 ### Bulk Downloads
 
 Paste up to **50 links at once**, one per line.

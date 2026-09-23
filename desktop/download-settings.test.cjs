@@ -53,6 +53,7 @@ test('never overwrites existing files and reserves concurrent names', async t =>
 });
 
 test('download errors are useful and never expose raw private text', () => {
+  assert.equal(friendlyDownloadError('Download stopped.', 499), 'Download stopped.');
   assert.match(friendlyDownloadError('ERROR: Requested format is not available SECRET_TOKEN'), /quality is unavailable/);
   assert.match(friendlyDownloadError('Unable to download webpage C:\\Users\\Private SECRET_TOKEN'), /could not reach/);
   assert.match(friendlyDownloadError('unknown failure SECRET_TOKEN'), /Report a problem/);
