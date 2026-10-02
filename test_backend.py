@@ -102,6 +102,24 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['platform'], 'Facebook')
 
+    def test_browser_session_is_used_for_metadata(self):
+        info = {'title': 'Restricted example'}
+        with patch('backend.run_ytdlp', return_value=SimpleNamespace(stdout=json.dumps(info))) as run:
+            response = self.client.post('/download', json={
+                'url': 'https://youtu.be/example', 'browser_session': 'edge',
+                'browser_profile': 'Profile 1',
+            })
+        self.assertEqual(response.status_code, 200)
+        args = run.call_args.args[0]
+        self.assertEqual(args[args.index('--cookies-from-browser') + 1], 'edge:Profile 1')
+
+    def test_browser_session_rejects_profile_paths(self):
+        response = self.client.post('/download', json={
+            'url': 'https://youtu.be/example', 'browser_session': 'chrome',
+            'browser_profile': r'C:\\Users\\Private',
+        })
+        self.assertEqual(response.status_code, 422)
+
     def test_empty_url(self):
         self.assertEqual(self.client.post('/download', json={'url': ' '}).status_code, 400)
 
@@ -145,11 +163,14 @@ class DownloadTests(unittest.TestCase):
             {'title': 'Second', 'playlist_index': 2, 'duration': 90},
         ]}
         with patch('backend.run_ytdlp', return_value=SimpleNamespace(stdout=json.dumps(info))) as run:
-            response = self.client.post('/playlist', json={'url': 'https://example.com/playlist/1'})
+            response = self.client.post('/playlist', json={
+                'url': 'https://example.com/playlist/1', 'browser_session': 'firefox',
+            })
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()['is_playlist'])
         self.assertEqual([item['title'] for item in response.json()['items']], ['First', 'Second'])
         self.assertTrue(run.call_args.kwargs['allow_playlist'])
+        self.assertEqual(run.call_args.args[0][run.call_args.args[0].index('--cookies-from-browser') + 1], 'firefox')
 
     def test_selected_playlist_item_downloads_alone(self):
         captured = {}

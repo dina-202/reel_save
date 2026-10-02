@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Sparkles, Link as LinkIcon, Clipboard, ShieldCheck, Download,
   Video, Music, FolderOpen, CheckCircle2, AlertCircle, ListVideo, Trash2,
-  StopCircle, Play, X, ArrowUp, ArrowDown, LoaderCircle,
+  StopCircle, Play, X, ArrowUp, ArrowDown, LoaderCircle, KeyRound,
 } from 'lucide-react';
 
 const PLATFORMS = [
@@ -63,6 +63,10 @@ export default function Hero({ onReport }) {
   const [playlistMode, setPlaylistMode] = useState(false);
   const [playlistBusy, setPlaylistBusy] = useState(false);
   const [playlistReview, setPlaylistReview] = useState(null);
+  const [browserSession, setBrowserSession] = useState({ enabled: false, browser: 'chrome', profile: '' });
+  const [savedBrowserSession, setSavedBrowserSession] = useState({ enabled: false, browser: 'chrome', profile: '' });
+  const [sessionBusy, setSessionBusy] = useState(false);
+  const [sessionError, setSessionError] = useState('');
   const active = useRef(false);
   const activeJobId = useRef(null);
   const stoppedJobs = useRef(new Set());
@@ -72,6 +76,9 @@ export default function Hero({ onReport }) {
     window.reelSaveDesktop.downloadLocation().then(({ folder: saved }) => {
       setFolder(saved); setFolderDraft(saved);
     }).catch(() => setFolderError('Could not load the saved download location.'));
+    window.reelSaveDesktop.browserSessionSettings().then(settings => {
+      setBrowserSession(settings); setSavedBrowserSession(settings);
+    }).catch(() => setSessionError('Could not load the signed-in access setting.'));
   }, []);
 
   useEffect(() => {
@@ -256,6 +263,18 @@ export default function Hero({ onReport }) {
     finally { setFolderBusy(false); }
   }
 
+  async function saveBrowserSession() {
+    setSessionBusy(true); setSessionError('');
+    try {
+      const saved = await window.reelSaveDesktop.saveBrowserSessionSettings(browserSession);
+      setBrowserSession(saved); setSavedBrowserSession(saved);
+      setMessage(saved.enabled
+        ? `Signed-in access saved for ${saved.browser}. Close that browser completely before retrying the link.`
+        : 'Signed-in access turned off.');
+    } catch (error) { setSessionError(messageOf(error, 'Could not save signed-in access.')); }
+    finally { setSessionBusy(false); }
+  }
+
   const working = jobs.some(job => ['queued', 'downloading', 'stopping'].includes(job.status));
   const hasPaused = jobs.some(job => job.status === 'paused');
   const completed = jobs.filter(job => job.status === 'saved').length;
@@ -263,6 +282,7 @@ export default function Hero({ onReport }) {
   const inputLinks = validLinks(input);
   const playlistDetected = !playlistMode && inputLinks.length === 1 && looksLikePlaylist(inputLinks[0]);
   const selectedCount = playlistReview?.items.filter(item => item.selected).length || 0;
+  const sessionChanged = JSON.stringify(browserSession) !== JSON.stringify(savedBrowserSession);
 
   return (
     <header className="rs-hero" id="top">
@@ -324,6 +344,51 @@ export default function Hero({ onReport }) {
             </div>
             {folderError && <p className="rs-location__error" role="alert">{folderError}</p>}
           </div>
+          <section className={`rs-session${browserSession.enabled ? ' is-active' : ''}`}>
+            <div className="rs-session__head">
+              <div><KeyRound size={17} /><span>Signed-in access</span><small>Optional</small></div>
+              <button className="rs-session__switch" type="button" role="switch" aria-checked={browserSession.enabled}
+                aria-label="Use signed-in browser session" disabled={sessionBusy || working}
+                onClick={() => setBrowserSession(current => ({ ...current, enabled: !current.enabled }))}>
+                <span />
+              </button>
+            </div>
+            <p className="rs-session__intro">For age-restricted, private, or sign-in-only videos, ReelSave can use the login already saved in your browser.</p>
+            {browserSession.enabled && <div className="rs-session__controls">
+              <label>Browser
+                <select value={browserSession.browser} disabled={sessionBusy || working}
+                  onChange={event => setBrowserSession(current => ({ ...current, browser: event.target.value }))}>
+                  <option value="chrome">Google Chrome</option>
+                  <option value="edge">Microsoft Edge</option>
+                  <option value="firefox">Mozilla Firefox</option>
+                  <option value="brave">Brave</option>
+                  <option value="vivaldi">Vivaldi</option>
+                  <option value="opera">Opera</option>
+                  <option value="chromium">Chromium</option>
+                </select>
+              </label>
+              <label>Profile <span>(optional)</span>
+                <input value={browserSession.profile} disabled={sessionBusy || working} maxLength={100}
+                  onChange={event => setBrowserSession(current => ({ ...current, profile: event.target.value }))}
+                  placeholder="Leave blank, or enter Profile 1" />
+              </label>
+            </div>}
+            <div className="rs-session__actions">
+              <button className="rs-btn rs-btn--purple" disabled={sessionBusy || working || !sessionChanged}
+                onClick={saveBrowserSession}>{sessionBusy ? 'Saving…' : 'Save & use'}</button>
+              <details className="rs-session__guide">
+                <summary>Quick setup guide</summary>
+                <ol>
+                  <li>Sign in to the video website in the browser selected above.</li>
+                  <li>Close that browser completely so its session file is unlocked.</li>
+                  <li>Turn this option on, choose the browser, then click <strong>Save & use</strong>. Leave Profile blank unless you use multiple profiles.</li>
+                  <li>Paste or retry the link. You can reopen the browser after the download starts.</li>
+                </ol>
+              </details>
+            </div>
+            <p className="rs-session__privacy"><ShieldCheck size={14} /> Cookies stay on this PC and are never added to diagnostic reports.</p>
+            {sessionError && <p className="rs-location__error" role="alert">{sessionError}</p>}
+          </section>
           {message && <p className="rs-queue__message" role="status">{message}</p>}
           <button className="rs-updater__details rs-report__trigger" onClick={onReport}>Report a problem</button>
         </div>

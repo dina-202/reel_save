@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const SESSION_BROWSERS = Object.freeze(['chrome', 'edge', 'firefox', 'brave', 'chromium', 'opera', 'vivaldi']);
 
 function cleanFolder(value) {
   if (typeof value !== 'string') throw new Error('Enter a download folder path.');
@@ -36,7 +37,8 @@ function friendlyDownloadError(value, status = 0) {
   const message = typeof value === 'string' ? value.toLowerCase() : '';
   if (status === 499 || message.includes('download stopped')) return 'Download stopped.';
   if (message.includes('requested format is not available')) return 'That quality is unavailable for this video. Try another quality setting.';
-  if (message.includes('sign in') || message.includes('log in') || message.includes('login') || message.includes('cookies')) return 'This video requires a signed-in session that ReelSave cannot access.';
+  if ((message.includes('could not copy') && message.includes('cookie')) || message.includes('cookie database') || message.includes('failed to decrypt')) return 'ReelSave could not read the browser session. Close the selected browser completely, check the profile name, and try again.';
+  if (message.includes('sign in') || message.includes('log in') || message.includes('login') || message.includes('cookies')) return 'This video requires sign-in. Enable Signed-in access, choose the browser where you are signed in, close it completely, and try again.';
   if (message.includes('unsupported url')) return 'This link or website is not supported by the current downloader.';
   if (message.includes('private video') || message.includes('video unavailable') || message.includes('has been removed') || status === 404) return 'This video is unavailable, private, or has been removed.';
   if (message.includes('timed out') || message.includes('timeout')) return 'The download timed out. Check your connection and try again.';
@@ -46,16 +48,35 @@ function friendlyDownloadError(value, status = 0) {
   return 'This download failed. Use Report a problem to share privacy-filtered diagnostic details.';
 }
 
+function cleanBrowserSession(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose valid signed-in access settings.');
+  const enabled = value.enabled === true;
+  const browser = typeof value.browser === 'string' ? value.browser.trim().toLowerCase() : 'chrome';
+  if (!SESSION_BROWSERS.includes(browser)) throw new Error('Choose a supported browser.');
+  const profile = typeof value.profile === 'string' ? value.profile.trim() : '';
+  if (profile.length > 100 || /[\\/:\x00-\x1f]/.test(profile) || profile === '.' || profile === '..') {
+    throw new Error('Use a browser profile name such as Default or Profile 1, not a folder path.');
+  }
+  return { enabled, browser, profile };
+}
+
 function createDownloadSettings({ dataDir, defaultFolder }) {
   const settingsFile = path.join(dataDir, 'settings.json');
   const reserved = new Set();
   let folder = cleanFolder(defaultFolder);
+  let browserSession = cleanBrowserSession();
   try {
     if (fs.existsSync(settingsFile) && fs.statSync(settingsFile).size < 16384) {
       const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-      folder = cleanFolder(saved.downloadFolder);
+      try { folder = cleanFolder(saved.downloadFolder); } catch { /* Keep the default folder. */ }
+      try { browserSession = cleanBrowserSession(saved.browserSession); } catch { /* Keep signed-in access disabled. */ }
     }
   } catch { /* A damaged setting falls back to Downloads. */ }
+
+  async function persist() {
+    await fs.promises.mkdir(dataDir, { recursive: true });
+    await fs.promises.writeFile(settingsFile, JSON.stringify({ downloadFolder: folder, browserSession }), 'utf8');
+  }
 
   async function ensureWritable(candidate) {
     const normalized = cleanFolder(candidate);
@@ -73,9 +94,14 @@ function createDownloadSettings({ dataDir, defaultFolder }) {
 
   async function save(candidate) {
     folder = await ensureWritable(candidate);
-    await fs.promises.mkdir(dataDir, { recursive: true });
-    await fs.promises.writeFile(settingsFile, JSON.stringify({ downloadFolder: folder }), 'utf8');
+    await persist();
     return { folder };
+  }
+
+  async function saveSession(candidate) {
+    browserSession = cleanBrowserSession(candidate);
+    await persist();
+    return { ...browserSession };
   }
 
   async function destination(suggested, fallback) {
@@ -95,8 +121,10 @@ function createDownloadSettings({ dataDir, defaultFolder }) {
 
   return {
     get: () => ({ folder }), save, destination,
+    session: () => ({ ...browserSession }), saveSession,
     release: candidate => reserved.delete(candidate),
   };
 }
 
-module.exports = { createDownloadSettings, cleanFolder, cleanFilename, filenameFromDisposition, friendlyDownloadError };
+module.exports = { createDownloadSettings, cleanFolder, cleanFilename, filenameFromDisposition, friendlyDownloadError,
+  cleanBrowserSession, SESSION_BROWSERS };

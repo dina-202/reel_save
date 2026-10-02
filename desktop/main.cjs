@@ -156,16 +156,28 @@ async function start() {
     if (error) throw new Error('Windows could not open the download folder.');
     return { opened: true };
   });
+  ipcMain.handle('browser-session:get', event => {
+    if (!fromReelSave(event)) throw new Error('Signed-in access settings are only available in ReelSave.');
+    return downloadSettings.session();
+  });
+  ipcMain.handle('browser-session:set', async (event, settings) => {
+    if (!fromReelSave(event)) throw new Error('Signed-in access settings are only available in ReelSave.');
+    return downloadSettings.saveSession(settings);
+  });
   ipcMain.handle('media:playlist', async (event, request) => {
     if (!fromReelSave(event)) throw new Error('Playlist tools are only available in ReelSave.');
     let source;
     try { source = new URL(request?.url); } catch { throw new Error('Enter a valid playlist link.'); }
     if (!['http:', 'https:'].includes(source.protocol) || source.href.length > 5000) throw new Error('Enter a valid playlist link.');
+    const browserSession = downloadSettings.session();
     let response;
     try {
       response = await fetch(`${baseUrl}/api/playlist`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
-        body: JSON.stringify({ url: source.href }), signal: AbortSignal.timeout(3 * 60 * 1000),
+        body: JSON.stringify({ url: source.href,
+          browser_session: browserSession.enabled ? browserSession.browser : null,
+          browser_profile: browserSession.enabled && browserSession.profile ? browserSession.profile : null }),
+        signal: AbortSignal.timeout(3 * 60 * 1000),
       });
     } catch {
       throw new Error('ReelSave could not inspect this playlist. Check your connection and try again.');
@@ -198,12 +210,15 @@ async function start() {
     }
     const controller = new AbortController();
     activeMediaAbort = controller;
+    const browserSession = downloadSettings.session();
     try {
       let response;
       try {
         response = await fetch(`${baseUrl}/api/download-${format}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
-          body: JSON.stringify({ url: source.href, format, quality: request.quality, playlist_index: playlistIndex }),
+          body: JSON.stringify({ url: source.href, format, quality: request.quality, playlist_index: playlistIndex,
+            browser_session: browserSession.enabled ? browserSession.browser : null,
+            browser_profile: browserSession.enabled && browserSession.profile ? browserSession.profile : null }),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15 * 60 * 1000)]),
         });
       } catch {
