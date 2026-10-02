@@ -9,6 +9,8 @@ const sessionOnly = process.argv.includes('--session-only');
 fs.mkdirSync(path.join(root, 'build'), { recursive: true });
 const profile = fs.mkdtempSync(path.join(root, 'build', 'desktop-smoke-'));
 const downloadFolder = path.join(profile, 'downloads');
+const cookieFile = path.join(profile, 'cookies.txt');
+fs.writeFileSync(cookieFile, '# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tsmoke-test');
 process.env.REELSAVE_DATA_DIR = profile;
 app.getVersion = () => require('../package.json').version;
 const opened = [];
@@ -30,7 +32,7 @@ app.on('browser-window-created', (_event, window) => {
     try {
       await until('!!document.querySelector(".rs-report__trigger")');
       assert.deepEqual(await run('window.reelSaveDesktop.browserSessionSettings()'),
-        { enabled: false, browser: 'chrome', profile: '' });
+        { enabled: false, method: 'browser', browser: 'chrome', profile: '', cookieFile: '' });
       await run('document.querySelector(".rs-session__switch").click()');
       await until('document.querySelector(".rs-session").classList.contains("is-active")');
       await run(`(() => {
@@ -51,6 +53,15 @@ app.on('browser-window-created', (_event, window) => {
         purple: getComputedStyle(document.documentElement).getPropertyValue('--rs-purple').trim(),
       }; })()`);
       assert.notEqual(switchStyle.color, 'rgb(203, 213, 225)', JSON.stringify(switchStyle));
+      await run('document.querySelectorAll(".rs-session__methods button")[1].click()');
+      await until('!!document.querySelector("#cookie-file")');
+      await run(`(() => {
+        const input = document.querySelector('#cookie-file');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(cookieFile)});
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await run('document.querySelector(".rs-session__actions .rs-btn").click()');
+      await until(`window.reelSaveDesktop.browserSessionSettings().then(value => value.enabled && value.method === 'cookies' && value.cookieFile === ${JSON.stringify(cookieFile)})`);
       await run('document.querySelector(".rs-session__guide summary").click()');
       await run('document.querySelector(".rs-session").scrollIntoView({block:"center"})');
       window.setSize(1120, 1000);

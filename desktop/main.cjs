@@ -164,19 +164,34 @@ async function start() {
     if (!fromReelSave(event)) throw new Error('Signed-in access settings are only available in ReelSave.');
     return downloadSettings.saveSession(settings);
   });
+  ipcMain.handle('browser-session:browse-cookie', async event => {
+    if (!fromReelSave(event)) throw new Error('Signed-in access settings are only available in ReelSave.');
+    const current = downloadSettings.session();
+    const selection = await dialog.showOpenDialog(window, { title: 'Choose exported cookies.txt',
+      defaultPath: current.cookieFile || app.getPath('downloads'), properties: ['openFile'],
+      filters: [{ name: 'Cookies text file', extensions: ['txt'] }, { name: 'All files', extensions: ['*'] }] });
+    return selection.canceled ? { canceled: true, cookieFile: current.cookieFile }
+      : { canceled: false, cookieFile: selection.filePaths[0] };
+  });
+  const authenticationPayload = () => {
+    const settings = downloadSettings.session();
+    if (!settings.enabled) return { browser_session: null, browser_profile: null, cookie_file: null };
+    if (settings.method === 'cookies') {
+      return { browser_session: null, browser_profile: null, cookie_file: settings.cookieFile };
+    }
+    return { browser_session: settings.browser, browser_profile: settings.profile || null, cookie_file: null };
+  };
   ipcMain.handle('media:playlist', async (event, request) => {
     if (!fromReelSave(event)) throw new Error('Playlist tools are only available in ReelSave.');
     let source;
     try { source = new URL(request?.url); } catch { throw new Error('Enter a valid playlist link.'); }
     if (!['http:', 'https:'].includes(source.protocol) || source.href.length > 5000) throw new Error('Enter a valid playlist link.');
-    const browserSession = downloadSettings.session();
+    const authentication = authenticationPayload();
     let response;
     try {
       response = await fetch(`${baseUrl}/api/playlist`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
-        body: JSON.stringify({ url: source.href,
-          browser_session: browserSession.enabled ? browserSession.browser : null,
-          browser_profile: browserSession.enabled && browserSession.profile ? browserSession.profile : null }),
+        body: JSON.stringify({ url: source.href, ...authentication }),
         signal: AbortSignal.timeout(3 * 60 * 1000),
       });
     } catch {
@@ -210,15 +225,14 @@ async function start() {
     }
     const controller = new AbortController();
     activeMediaAbort = controller;
-    const browserSession = downloadSettings.session();
+    const authentication = authenticationPayload();
     try {
       let response;
       try {
         response = await fetch(`${baseUrl}/api/download-${format}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ReelSave-Desktop-Token': token },
           body: JSON.stringify({ url: source.href, format, quality: request.quality, playlist_index: playlistIndex,
-            browser_session: browserSession.enabled ? browserSession.browser : null,
-            browser_profile: browserSession.enabled && browserSession.profile ? browserSession.profile : null }),
+            ...authentication }),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15 * 60 * 1000)]),
         });
       } catch {

@@ -67,7 +67,7 @@ Existing files are never overwritten — ReelSave automatically adds `(1)`, `(2)
 
 ### Optional Signed-in Access
 
-Some age-restricted, private, or sign-in-only videos need an authenticated browser session. Turn on **Signed-in access**, choose the browser where you are already signed in, and save the setting. ReelSave asks yt-dlp to read that browser's local session only while processing the link.
+Some age-restricted, private, or sign-in-only videos need an authenticated session. Turn on **Signed-in access** and choose either **Browser login** or **Cookies file**.
 
 Quick setup:
 
@@ -76,7 +76,9 @@ Quick setup:
 3. In ReelSave, turn on **Signed-in access**, choose the browser, and click **Save & use**. Leave Profile blank unless you use multiple browser profiles.
 4. Paste or retry the link.
 
-Cookies remain on the user's PC. ReelSave stores only the selected browser and optional profile name, and authentication data is never included in diagnostic reports.
+If direct browser access does not work, select **Cookies file**, enter the full path to an exported Netscape-format `cookies.txt`, or choose it with **Browse**, and click **Save & use**. ReelSave never asks for a YouTube email or password.
+
+Cookies remain on the user's PC. ReelSave stores only the selected browser/profile or the path to the selected cookies file, and authentication data is never included in diagnostic reports.
 
 ### Automatic Downloader Updates
 

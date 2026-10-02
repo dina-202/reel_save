@@ -12,6 +12,16 @@ function cleanFolder(value) {
   return path.win32.normalize(trimmed);
 }
 
+function cleanCookieFile(value) {
+  if (value == null || value === '') return '';
+  if (typeof value !== 'string') throw new Error('Choose a valid cookies.txt file.');
+  const trimmed = value.trim().replace(/^"(.*)"$/, '$1');
+  if (trimmed.length > 1000 || !path.win32.isAbsolute(trimmed) || /^\\\\[?.]\\/.test(trimmed)) {
+    throw new Error('Enter the full path to an exported cookies.txt file.');
+  }
+  return path.win32.normalize(trimmed);
+}
+
 function cleanFilename(value, fallback = 'download.mp4') {
   let name = path.win32.basename(typeof value === 'string' ? value : '');
   name = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').trim();
@@ -37,8 +47,9 @@ function friendlyDownloadError(value, status = 0) {
   const message = typeof value === 'string' ? value.toLowerCase() : '';
   if (status === 499 || message.includes('download stopped')) return 'Download stopped.';
   if (message.includes('requested format is not available')) return 'That quality is unavailable for this video. Try another quality setting.';
+  if (message.includes('cookie') && (message.includes('no such file') || message.includes('does not exist') || message.includes('could not open'))) return 'ReelSave could not read the selected cookies.txt file. Choose the file again and retry.';
   if ((message.includes('could not copy') && message.includes('cookie')) || message.includes('cookie database') || message.includes('failed to decrypt')) return 'ReelSave could not read the browser session. Close the selected browser completely, check the profile name, and try again.';
-  if (message.includes('sign in') || message.includes('log in') || message.includes('login') || message.includes('cookies')) return 'This video requires sign-in. Enable Signed-in access, choose the browser where you are signed in, close it completely, and try again.';
+  if (message.includes('sign in') || message.includes('log in') || message.includes('login') || message.includes('cookies')) return 'This video requires sign-in. Enable Signed-in access and choose Browser login or Cookies file, then try again.';
   if (message.includes('unsupported url')) return 'This link or website is not supported by the current downloader.';
   if (message.includes('private video') || message.includes('video unavailable') || message.includes('has been removed') || status === 404) return 'This video is unavailable, private, or has been removed.';
   if (message.includes('timed out') || message.includes('timeout')) return 'The download timed out. Check your connection and try again.';
@@ -51,13 +62,15 @@ function friendlyDownloadError(value, status = 0) {
 function cleanBrowserSession(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose valid signed-in access settings.');
   const enabled = value.enabled === true;
+  const method = value.method === 'cookies' ? 'cookies' : 'browser';
   const browser = typeof value.browser === 'string' ? value.browser.trim().toLowerCase() : 'chrome';
   if (!SESSION_BROWSERS.includes(browser)) throw new Error('Choose a supported browser.');
   const profile = typeof value.profile === 'string' ? value.profile.trim() : '';
   if (profile.length > 100 || /[\\/:\x00-\x1f]/.test(profile) || profile === '.' || profile === '..') {
     throw new Error('Use a browser profile name such as Default or Profile 1, not a folder path.');
   }
-  return { enabled, browser, profile };
+  const cookieFile = cleanCookieFile(value.cookieFile);
+  return { enabled, method, browser, profile, cookieFile };
 }
 
 function createDownloadSettings({ dataDir, defaultFolder }) {
@@ -99,7 +112,17 @@ function createDownloadSettings({ dataDir, defaultFolder }) {
   }
 
   async function saveSession(candidate) {
-    browserSession = cleanBrowserSession(candidate);
+    const next = cleanBrowserSession(candidate);
+    if (next.enabled && next.method === 'cookies') {
+      try {
+        const stat = await fs.promises.stat(next.cookieFile);
+        if (!stat.isFile() || stat.size > 10 * 1024 * 1024) throw new Error('invalid cookie file');
+        await fs.promises.access(next.cookieFile, fs.constants.R_OK);
+      } catch {
+        throw new Error('Choose a readable cookies.txt file smaller than 10 MB.');
+      }
+    }
+    browserSession = next;
     await persist();
     return { ...browserSession };
   }
@@ -127,4 +150,4 @@ function createDownloadSettings({ dataDir, defaultFolder }) {
 }
 
 module.exports = { createDownloadSettings, cleanFolder, cleanFilename, filenameFromDisposition, friendlyDownloadError,
-  cleanBrowserSession, SESSION_BROWSERS };
+  cleanBrowserSession, cleanCookieFile, SESSION_BROWSERS };

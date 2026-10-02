@@ -120,6 +120,18 @@ class DownloadTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 422)
 
+    def test_cookie_file_is_used_instead_of_browser_session(self):
+        info = {'title': 'Restricted example'}
+        with patch('backend.run_ytdlp', return_value=SimpleNamespace(stdout=json.dumps(info))) as run:
+            response = self.client.post('/download', json={
+                'url': 'https://youtu.be/example', 'browser_session': 'chrome',
+                'cookie_file': r'C:\\Users\\Example\\cookies.txt',
+            })
+        self.assertEqual(response.status_code, 200)
+        args = run.call_args.args[0]
+        self.assertEqual(args[args.index('--cookies') + 1], r'C:\\Users\\Example\\cookies.txt')
+        self.assertNotIn('--cookies-from-browser', args)
+
     def test_empty_url(self):
         self.assertEqual(self.client.post('/download', json={'url': ' '}).status_code, 400)
 

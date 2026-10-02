@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Sparkles, Link as LinkIcon, Clipboard, ShieldCheck, Download,
   Video, Music, FolderOpen, CheckCircle2, AlertCircle, ListVideo, Trash2,
-  StopCircle, Play, X, ArrowUp, ArrowDown, LoaderCircle, KeyRound,
+  StopCircle, Play, X, ArrowUp, ArrowDown, LoaderCircle, KeyRound, FileText,
 } from 'lucide-react';
 
 const PLATFORMS = [
@@ -63,8 +63,8 @@ export default function Hero({ onReport }) {
   const [playlistMode, setPlaylistMode] = useState(false);
   const [playlistBusy, setPlaylistBusy] = useState(false);
   const [playlistReview, setPlaylistReview] = useState(null);
-  const [browserSession, setBrowserSession] = useState({ enabled: false, browser: 'chrome', profile: '' });
-  const [savedBrowserSession, setSavedBrowserSession] = useState({ enabled: false, browser: 'chrome', profile: '' });
+  const [browserSession, setBrowserSession] = useState({ enabled: false, method: 'browser', browser: 'chrome', profile: '', cookieFile: '' });
+  const [savedBrowserSession, setSavedBrowserSession] = useState({ enabled: false, method: 'browser', browser: 'chrome', profile: '', cookieFile: '' });
   const [sessionBusy, setSessionBusy] = useState(false);
   const [sessionError, setSessionError] = useState('');
   const active = useRef(false);
@@ -269,9 +269,19 @@ export default function Hero({ onReport }) {
       const saved = await window.reelSaveDesktop.saveBrowserSessionSettings(browserSession);
       setBrowserSession(saved); setSavedBrowserSession(saved);
       setMessage(saved.enabled
-        ? `Signed-in access saved for ${saved.browser}. Close that browser completely before retrying the link.`
+        ? saved.method === 'cookies' ? 'Signed-in access saved using the selected cookies.txt file.'
+          : `Signed-in access saved for ${saved.browser}. Close that browser completely before retrying the link.`
         : 'Signed-in access turned off.');
     } catch (error) { setSessionError(messageOf(error, 'Could not save signed-in access.')); }
+    finally { setSessionBusy(false); }
+  }
+
+  async function browseCookieFile() {
+    setSessionBusy(true); setSessionError('');
+    try {
+      const result = await window.reelSaveDesktop.browseCookieFile();
+      if (!result.canceled) setBrowserSession(current => ({ ...current, cookieFile: result.cookieFile }));
+    } catch (error) { setSessionError(messageOf(error, 'Could not choose that cookies file.')); }
     finally { setSessionBusy(false); }
   }
 
@@ -353,40 +363,64 @@ export default function Hero({ onReport }) {
                 <span />
               </button>
             </div>
-            <p className="rs-session__intro">For age-restricted, private, or sign-in-only videos, ReelSave can use the login already saved in your browser.</p>
-            {browserSession.enabled && <div className="rs-session__controls">
-              <label>Browser
-                <select value={browserSession.browser} disabled={sessionBusy || working}
-                  onChange={event => setBrowserSession(current => ({ ...current, browser: event.target.value }))}>
-                  <option value="chrome">Google Chrome</option>
-                  <option value="edge">Microsoft Edge</option>
-                  <option value="firefox">Mozilla Firefox</option>
-                  <option value="brave">Brave</option>
-                  <option value="vivaldi">Vivaldi</option>
-                  <option value="opera">Opera</option>
-                  <option value="chromium">Chromium</option>
-                </select>
-              </label>
-              <label>Profile <span>(optional)</span>
-                <input value={browserSession.profile} disabled={sessionBusy || working} maxLength={100}
-                  onChange={event => setBrowserSession(current => ({ ...current, profile: event.target.value }))}
-                  placeholder="Leave blank, or enter Profile 1" />
-              </label>
-            </div>}
+            <p className="rs-session__intro">For age-restricted, private, or sign-in-only videos, choose a saved browser login or an exported cookies.txt file.</p>
+            {browserSession.enabled && <>
+              <div className="rs-session__methods" role="group" aria-label="Signed-in access method">
+                <button className={browserSession.method === 'browser' ? 'is-active' : ''}
+                  onClick={() => setBrowserSession(current => ({ ...current, method: 'browser' }))}
+                  disabled={sessionBusy || working}><KeyRound size={14} /> Browser login</button>
+                <button className={browserSession.method === 'cookies' ? 'is-active' : ''}
+                  onClick={() => setBrowserSession(current => ({ ...current, method: 'cookies' }))}
+                  disabled={sessionBusy || working}><FileText size={14} /> Cookies file</button>
+              </div>
+              {browserSession.method === 'browser' ? <div className="rs-session__controls">
+                <label>Browser
+                  <select value={browserSession.browser} disabled={sessionBusy || working}
+                    onChange={event => setBrowserSession(current => ({ ...current, browser: event.target.value }))}>
+                    <option value="chrome">Google Chrome</option>
+                    <option value="edge">Microsoft Edge</option>
+                    <option value="firefox">Mozilla Firefox</option>
+                    <option value="brave">Brave</option>
+                    <option value="vivaldi">Vivaldi</option>
+                    <option value="opera">Opera</option>
+                    <option value="chromium">Chromium</option>
+                  </select>
+                </label>
+                <label>Profile <span>(optional)</span>
+                  <input value={browserSession.profile} disabled={sessionBusy || working} maxLength={100}
+                    onChange={event => setBrowserSession(current => ({ ...current, profile: event.target.value }))}
+                    placeholder="Leave blank, or enter Profile 1" />
+                </label>
+              </div> : <div className="rs-session__cookie">
+                <label htmlFor="cookie-file">Exported cookies.txt file</label>
+                <div>
+                  <input id="cookie-file" value={browserSession.cookieFile} disabled={sessionBusy || working}
+                    onChange={event => setBrowserSession(current => ({ ...current, cookieFile: event.target.value }))}
+                    placeholder="C:\\Users\\Name\\Downloads\\cookies.txt" />
+                  <button className="rs-btn rs-btn--soft" disabled={sessionBusy || working} onClick={browseCookieFile}>Browse</button>
+                </div>
+                <p>Choose a Netscape-format cookies.txt exported from a browser where you are signed in. Never enter your email or password here.</p>
+              </div>}
+            </>}
             <div className="rs-session__actions">
               <button className="rs-btn rs-btn--purple" disabled={sessionBusy || working || !sessionChanged}
                 onClick={saveBrowserSession}>{sessionBusy ? 'Saving…' : 'Save & use'}</button>
               <details className="rs-session__guide">
                 <summary>Quick setup guide</summary>
-                <ol>
+                {browserSession.method === 'cookies' ? <ol>
+                  <li>Sign in to the video website in your browser.</li>
+                  <li>Use a trusted local cookie exporter to create a Netscape-format <strong>cookies.txt</strong> file.</li>
+                  <li>Enter its full path or click <strong>Browse</strong>, then click <strong>Save & use</strong>.</li>
+                  <li>Paste or retry the video link. Export a fresh file if the session later expires.</li>
+                </ol> : <ol>
                   <li>Sign in to the video website in the browser selected above.</li>
                   <li>Close that browser completely so its session file is unlocked.</li>
-                  <li>Turn this option on, choose the browser, then click <strong>Save & use</strong>. Leave Profile blank unless you use multiple profiles.</li>
+                  <li>Choose the browser, then click <strong>Save & use</strong>. Leave Profile blank unless you use multiple profiles.</li>
                   <li>Paste or retry the link. You can reopen the browser after the download starts.</li>
-                </ol>
+                </ol>}
               </details>
             </div>
-            <p className="rs-session__privacy"><ShieldCheck size={14} /> Cookies stay on this PC and are never added to diagnostic reports.</p>
+            <p className="rs-session__privacy"><ShieldCheck size={14} /> Login data stays on this PC and is never added to diagnostic reports.</p>
             {sessionError && <p className="rs-location__error" role="alert">{sessionError}</p>}
           </section>
           {message && <p className="rs-queue__message" role="status">{message}</p>}
