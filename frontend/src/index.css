@@ -497,6 +497,31 @@ a { color: inherit; text-decoration: none; }
 .rs-location__row .rs-btn { min-height: 42px; padding: 9px 14px; white-space: nowrap; font-size: 12px; }
 .rs-location__row .rs-updater__details { margin: 0 3px; white-space: nowrap; }
 .rs-location__error { margin: 8px 0 0; color: var(--rs-danger); font-size: 12px; }
+.rs-session { margin-top: 14px; padding: 14px 15px; border: 1px solid var(--rs-border); border-radius: var(--rs-r-md); background: rgba(255,255,255,.62); text-align: left; transition: border-color var(--rs-dur) var(--rs-ease), box-shadow var(--rs-dur) var(--rs-ease); }
+.rs-session.is-active { border-color: rgba(124,58,237,.35); box-shadow: 0 0 0 3px rgba(124,58,237,.07); }
+.rs-session__head, .rs-session__head > div, .rs-session__actions, .rs-session__privacy { display: flex; align-items: center; }
+.rs-session__head { justify-content: space-between; gap: 12px; }
+.rs-session__head > div { gap: 7px; color: var(--rs-ink); font-size: 13px; font-weight: 700; }
+.rs-session__head svg { color: var(--rs-purple); }
+.rs-session__head small { padding: 3px 7px; border-radius: var(--rs-r-pill); background: var(--rs-purple-100); color: var(--rs-purple); font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.rs-session__switch { width: 42px; height: 24px; padding: 3px; border: 0; border-radius: 999px; background: #cbd5e1; cursor: pointer; transition: background var(--rs-dur) var(--rs-ease); }
+.rs-session__switch span { display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(15,23,42,.18); transition: transform var(--rs-dur) var(--rs-ease); }
+.rs-session__switch[aria-checked="true"], .rs-session.is-active .rs-session__switch { background: var(--rs-purple); }
+.rs-session__switch[aria-checked="true"] span, .rs-session.is-active .rs-session__switch span { transform: translateX(18px); }
+.rs-session__switch[disabled] { opacity: .55; cursor: default; }
+.rs-session__intro { margin: 7px 54px 0 24px; color: var(--rs-text-3); font-size: 11px; line-height: 1.5; }
+.rs-session__controls { display: grid; grid-template-columns: minmax(150px,.7fr) minmax(210px,1.3fr); gap: 10px; margin-top: 12px; }
+.rs-session__controls label { color: var(--rs-text-2); font-size: 11px; font-weight: 700; }
+.rs-session__controls label > span { color: var(--rs-text-3); font-weight: 500; }
+.rs-session__controls select, .rs-session__controls input { width: 100%; margin-top: 5px; padding: 10px 11px; border: 1px solid var(--rs-border-2); border-radius: var(--rs-r-sm); outline: none; background: #fff; color: var(--rs-text-2); font: inherit; font-size: 12px; }
+.rs-session__controls select:focus, .rs-session__controls input:focus { border-color: var(--rs-purple); box-shadow: 0 0 0 3px rgba(124,58,237,.1); }
+.rs-session__actions { align-items: flex-start; gap: 12px; margin-top: 12px; }
+.rs-session__actions .rs-btn { min-height: 38px; padding: 8px 14px; white-space: nowrap; font-size: 11px; }
+.rs-session__guide { flex: 1; min-width: 0; color: var(--rs-text-2); font-size: 11px; }
+.rs-session__guide summary { width: max-content; padding: 8px 0; color: var(--rs-purple); font-weight: 700; cursor: pointer; }
+.rs-session__guide ol { margin: 5px 0 2px; padding-left: 20px; line-height: 1.6; }
+.rs-session__guide li + li { margin-top: 3px; }
+.rs-session__privacy { gap: 5px; margin: 9px 0 0; color: var(--rs-success-600); font-size: 10px; }
 .rs-queue__message { margin: 12px 0 0; color: var(--rs-purple-700); font-size: 12px; font-weight: 600; }
 .rs-queue { max-width: 820px; margin: 24px auto 0; padding: 18px; border: 1px solid var(--rs-border); border-radius: var(--rs-r-lg); background: rgba(255,255,255,.94); box-shadow: var(--rs-shadow-lg); text-align: left; }
 .rs-queue__head, .rs-queue__head > div { display: flex; align-items: center; gap: 9px; }
@@ -557,6 +582,10 @@ a { color: inherit; text-decoration: none; }
   .rs-mode__quality { width: 100%; border: 0; border-top: 1px solid var(--rs-border); padding: 9px; text-align: center; }
   .rs-location__row { flex-wrap: wrap; }
   .rs-location__row > input { flex-basis: 100%; }
+  .rs-session__intro { margin-right: 0; }
+  .rs-session__controls { grid-template-columns: 1fr; }
+  .rs-session__actions { flex-wrap: wrap; }
+  .rs-session__guide { flex-basis: 100%; }
   .rs-queue__head { align-items: flex-start; }
   .rs-queue__head > div { flex-wrap: wrap; }
   .rs-queue__head { flex-direction: column; }

@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createDownloadSettings, cleanFolder, cleanFilename, filenameFromDisposition, friendlyDownloadError } = require('./download-settings.cjs');
+const { createDownloadSettings, cleanFolder, cleanFilename, filenameFromDisposition, friendlyDownloadError,
+  cleanBrowserSession } = require('./download-settings.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reelsave-downloads-'));
@@ -31,6 +32,21 @@ test('rejects relative paths, device paths, and files', async t => {
   await assert.rejects(settings.save(file), /cannot write/);
 });
 
+test('saves signed-in browser choice without storing cookies', async t => {
+  const { dataDir, defaultFolder, settings } = fixture(t);
+  const saved = await settings.saveSession({ enabled: true, browser: 'edge', profile: 'Profile 1' });
+  assert.deepEqual(saved, { enabled: true, browser: 'edge', profile: 'Profile 1' });
+  assert.deepEqual(createDownloadSettings({ dataDir, defaultFolder }).session(), saved);
+  const contents = fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8');
+  assert.doesNotMatch(contents, /cookie|token|password/i);
+});
+
+test('rejects unsupported browsers and profile paths', () => {
+  assert.throws(() => cleanBrowserSession({ enabled: true, browser: 'unknown', profile: '' }), /supported browser/);
+  assert.throws(() => cleanBrowserSession({ enabled: true, browser: 'chrome', profile: 'C:\\Private' }), /profile name/);
+  assert.throws(() => cleanBrowserSession({ enabled: true, browser: 'chrome', profile: '..' }), /profile name/);
+});
+
 test('sanitizes response filenames and decodes UTF-8 content disposition', () => {
   assert.equal(cleanFilename('..\\CON.mp4'), 'download.mp4');
   assert.equal(cleanFilename('..\\bad<name>.mp4'), 'bad_name_.mp4');
@@ -56,6 +72,8 @@ test('download errors are useful and never expose raw private text', () => {
   assert.equal(friendlyDownloadError('Download stopped.', 499), 'Download stopped.');
   assert.match(friendlyDownloadError('ERROR: Requested format is not available SECRET_TOKEN'), /quality is unavailable/);
   assert.match(friendlyDownloadError('Unable to download webpage C:\\Users\\Private SECRET_TOKEN'), /could not reach/);
+  assert.match(friendlyDownloadError('ERROR: Sign in to confirm your age'), /Enable Signed-in access/);
+  assert.match(friendlyDownloadError('Could not copy Chrome cookie database'), /Close the selected browser/);
   assert.match(friendlyDownloadError('unknown failure SECRET_TOKEN'), /Report a problem/);
   for (const message of [
     friendlyDownloadError('ERROR: Requested format is not available SECRET_TOKEN'),

@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
+const sessionOnly = process.argv.includes('--session-only');
 fs.mkdirSync(path.join(root, 'build'), { recursive: true });
 const profile = fs.mkdtempSync(path.join(root, 'build', 'desktop-smoke-'));
 const downloadFolder = path.join(profile, 'downloads');
@@ -28,6 +29,40 @@ app.on('browser-window-created', (_event, window) => {
     }
     try {
       await until('!!document.querySelector(".rs-report__trigger")');
+      assert.deepEqual(await run('window.reelSaveDesktop.browserSessionSettings()'),
+        { enabled: false, browser: 'chrome', profile: '' });
+      await run('document.querySelector(".rs-session__switch").click()');
+      await until('document.querySelector(".rs-session").classList.contains("is-active")');
+      await run(`(() => {
+        const select = document.querySelector('.rs-session select');
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'edge');
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        const input = document.querySelector('.rs-session input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Profile 1');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await run('document.querySelector(".rs-session__actions .rs-btn").click()');
+      await until(`window.reelSaveDesktop.browserSessionSettings().then(value => value.enabled && value.browser === 'edge' && value.profile === 'Profile 1')`);
+      assert.equal(await run('document.querySelector(".rs-session__switch").getAttribute("aria-checked")'), 'true');
+      await new Promise(resolve => setTimeout(resolve, 350));
+      const switchStyle = await run(`(() => { const button = document.querySelector('.rs-session__switch'); return {
+        color: getComputedStyle(button).backgroundColor, active: button.closest('.rs-session').className,
+        ariaMatch: button.matches('[aria-checked="true"]'), activeMatch: button.matches('.rs-session.is-active .rs-session__switch'),
+        purple: getComputedStyle(document.documentElement).getPropertyValue('--rs-purple').trim(),
+      }; })()`);
+      assert.notEqual(switchStyle.color, 'rgb(203, 213, 225)', JSON.stringify(switchStyle));
+      await run('document.querySelector(".rs-session__guide summary").click()');
+      await run('document.querySelector(".rs-session").scrollIntoView({block:"center"})');
+      window.setSize(1120, 1000);
+      await new Promise(resolve => setTimeout(resolve, 150));
+      fs.writeFileSync(path.join(root, 'build', 'signed-session.png'), (await window.webContents.capturePage()).toPNG());
+      await run('document.querySelector(".rs-session__switch").click()');
+      await run('document.querySelector(".rs-session__actions .rs-btn").click()');
+      await until('window.reelSaveDesktop.browserSessionSettings().then(value => !value.enabled)');
+      if (sessionOnly) {
+        console.log('Signed-in browser session settings, persistence, guide, and preview passed.');
+        return;
+      }
       // This fails before running yt-dlp or contacting a video platform.
       assert.equal(await run(`fetch('/api/download-video', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:''})}).then(r => r.status)`), 400);
       await until(`window.reelSaveDesktop.diagnosticReports().then(r => r.records.some(x => x.stage === 'download'))`);

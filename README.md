@@ -65,6 +65,19 @@ Files are downloaded directly to that folder without showing a save dialog every
 
 Existing files are never overwritten — ReelSave automatically adds `(1)`, `(2)`, and so on when necessary.
 
+### Optional Signed-in Access
+
+Some age-restricted, private, or sign-in-only videos need an authenticated browser session. Turn on **Signed-in access**, choose the browser where you are already signed in, and save the setting. ReelSave asks yt-dlp to read that browser's local session only while processing the link.
+
+Quick setup:
+
+1. Sign in to the video website in Chrome, Edge, Firefox, Brave, Vivaldi, Opera, or Chromium.
+2. Close that browser completely so its cookie database is unlocked.
+3. In ReelSave, turn on **Signed-in access**, choose the browser, and click **Save & use**. Leave Profile blank unless you use multiple browser profiles.
+4. Paste or retry the link.
+
+Cookies remain on the user's PC. ReelSave stores only the selected browser and optional profile name, and authentication data is never included in diagnostic reports.
+
 ### Automatic Downloader Updates
 
 ReelSave can update **yt-dlp and its support packages independently** without requiring an application reinstall or restart.

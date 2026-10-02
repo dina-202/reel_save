@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('reelSaveDesktop', Object.freeze({
   saveDownloadLocation: folder => ipcRenderer.invoke('download-location:set', folder),
   browseDownloadLocation: () => ipcRenderer.invoke('download-location:browse'),
   openDownloadLocation: () => ipcRenderer.invoke('download-location:open'),
+  browserSessionSettings: () => ipcRenderer.invoke('browser-session:get'),
+  saveBrowserSessionSettings: settings => ipcRenderer.invoke('browser-session:set', settings),
   updateStatus: () => ipcRenderer.invoke('app-update:status'),
   checkUpdate: () => ipcRenderer.invoke('app-update:check'),
   downloadUpdate: () => ipcRenderer.invoke('app-update:download'),
