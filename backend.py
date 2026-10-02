@@ -134,7 +134,10 @@ def video_options(quality: str) -> list[str]:
     return options if resolution is None else [*options, "--format-sort", f"res:{resolution}"]
 
 
-def browser_cookie_options(browser: str | None, profile: str | None) -> list[str]:
+def authentication_options(browser: str | None, profile: str | None,
+                           cookie_file: str | None = None) -> list[str]:
+    if cookie_file:
+        return ["--cookies", cookie_file]
     if not browser:
         return []
     browser_spec = browser
@@ -145,11 +148,12 @@ def browser_cookie_options(browser: str | None, profile: str | None) -> list[str
 
 
 def extract_info(url: str, fmt: str = "video", quality: str = "hd",
-                 browser: str | None = None, profile: str | None = None) -> dict:
+                 browser: str | None = None, profile: str | None = None,
+                 cookie_file: str | None = None) -> dict:
     # Metadata can describe separate video/audio streams; yt-dlp merges them
     # when the user downloads, instead of sending a fragile CDN URL to the UI.
     options = ["--format", "bestaudio/best"] if fmt == "audio" else video_options(quality)
-    result = run_ytdlp(["-J", *options, *browser_cookie_options(browser, profile), "--", url])
+    result = run_ytdlp(["-J", *options, *authentication_options(browser, profile, cookie_file), "--", url])
 
     # ---------- parse JSON ----------
     try:
@@ -211,6 +215,7 @@ class DownloadRequest(BaseModel):
     playlist_index: int | None = Field(default=None, ge=1, le=200)
     browser_session: Literal["chrome", "edge", "firefox", "brave", "chromium", "opera", "vivaldi"] | None = None
     browser_profile: str | None = Field(default=None, max_length=100, pattern=r"^[^\\/:\x00-\x1f]*$")
+    cookie_file: str | None = Field(default=None, max_length=1000, pattern=r"^[^\x00-\x1f]+$")
 
 
 class DownloadResponse(BaseModel):
@@ -239,7 +244,8 @@ def download(req: DownloadRequest):
 
     with diagnostic_operation('metadata', req):
         info = extract_info(req.url.strip(), fmt=req.format, quality=req.quality,
-                            browser=req.browser_session, profile=req.browser_profile)
+                            browser=req.browser_session, profile=req.browser_profile,
+                            cookie_file=req.cookie_file)
     return info
 
 
@@ -249,7 +255,7 @@ def playlist(req: DownloadRequest):
         raise HTTPException(status_code=400, detail="URL is required.")
     with diagnostic_operation("metadata", req):
         result = run_ytdlp(["--flat-playlist", "--dump-single-json", "--playlist-end", "200",
-                            *browser_cookie_options(req.browser_session, req.browser_profile),
+                            *authentication_options(req.browser_session, req.browser_profile, req.cookie_file),
                             "--", req.url.strip()], timeout=180, allow_playlist=True)
         try:
             info = json.loads(result.stdout)
@@ -311,7 +317,7 @@ def download_file(req: DownloadRequest, audio: bool):
                      "--recode-video", "mp4"]
         if req.playlist_index is not None:
             args += ["--playlist-items", str(req.playlist_index)]
-        args += browser_cookie_options(req.browser_session, req.browser_profile)
+        args += authentication_options(req.browser_session, req.browser_profile, req.cookie_file)
         if req.playlist_index is None:
             run_ytdlp(args + ["--", req.url.strip()], timeout=600)
         else:

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createDownloadSettings, cleanFolder, cleanFilename, filenameFromDisposition, friendlyDownloadError,
-  cleanBrowserSession } = require('./download-settings.cjs');
+  cleanBrowserSession, cleanCookieFile } = require('./download-settings.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reelsave-downloads-'));
@@ -35,10 +35,29 @@ test('rejects relative paths, device paths, and files', async t => {
 test('saves signed-in browser choice without storing cookies', async t => {
   const { dataDir, defaultFolder, settings } = fixture(t);
   const saved = await settings.saveSession({ enabled: true, browser: 'edge', profile: 'Profile 1' });
-  assert.deepEqual(saved, { enabled: true, browser: 'edge', profile: 'Profile 1' });
+  assert.deepEqual(saved, { enabled: true, method: 'browser', browser: 'edge', profile: 'Profile 1', cookieFile: '' });
   assert.deepEqual(createDownloadSettings({ dataDir, defaultFolder }).session(), saved);
   const contents = fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8');
-  assert.doesNotMatch(contents, /cookie|token|password/i);
+  assert.doesNotMatch(contents, /SECRET_COOKIE|token|password/i);
+});
+
+test('saves a readable cookies file path without copying its contents', async t => {
+  const { root, dataDir, settings } = fixture(t);
+  const cookieFile = path.join(root, 'cookies.txt');
+  fs.writeFileSync(cookieFile, '# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tSECRET_COOKIE');
+  const saved = await settings.saveSession({ enabled: true, method: 'cookies', browser: 'chrome',
+    profile: '', cookieFile });
+  assert.equal(saved.cookieFile, cookieFile);
+  const contents = fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8');
+  assert.match(contents, /cookies\.txt/);
+  assert.doesNotMatch(contents, /SECRET_COOKIE/);
+});
+
+test('rejects missing and relative cookies files', async t => {
+  const { settings } = fixture(t);
+  assert.throws(() => cleanCookieFile('cookies.txt'), /full path/);
+  await assert.rejects(settings.saveSession({ enabled: true, method: 'cookies', browser: 'chrome',
+    profile: '', cookieFile: 'C:\\Missing\\cookies.txt' }), /readable cookies/);
 });
 
 test('rejects unsupported browsers and profile paths', () => {
