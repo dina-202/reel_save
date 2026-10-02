@@ -16,7 +16,7 @@ function sanitize(input = {}) {
     stage: pick(input.stage, STAGES, 'engine'), code: pick(input.code, CODES, 'engine_error'),
     platform: pick(input.platform, ['youtube', 'instagram', 'facebook', 'tiktok', 'reddit'], 'other'),
     format: pick(input.format, ['video', 'audio'], 'unknown'),
-    quality: pick(input.quality, ['hd', 'sd', 'hi', 'lo'], 'unknown'),
+    quality: pick(input.quality, ['hd', 'sd', '2k', '4k', '8k', 'best', 'hi', 'lo'], 'unknown'),
     downloader: version(input.downloader),
     http_status: Number.isInteger(input.http_status) && input.http_status >= 400 && input.http_status <= 599 ? input.http_status : 0,
   };

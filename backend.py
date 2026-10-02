@@ -129,9 +129,9 @@ def video_options(quality: str) -> list[str]:
     # res ranks the shorter edge, so 1080x1920 is treated as 1080p.
     # Sorting prefers the target size without excluding unknown dimensions or
     # sources that have no smaller rendition. Final fallback supports silent video.
-    resolution = 480 if quality == "sd" else 1080
-    return ["--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best/bestvideo",
-            "--format-sort", f"res:{resolution}"]
+    options = ["--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best/bestvideo"]
+    resolution = {"sd": 480, "hd": 1080, "2k": 1440, "4k": 2160, "8k": 4320}.get(quality)
+    return options if resolution is None else [*options, "--format-sort", f"res:{resolution}"]
 
 
 def extract_info(url: str, fmt: str = "video", quality: str = "hd") -> dict:
@@ -196,7 +196,7 @@ def extract_info(url: str, fmt: str = "video", quality: str = "hd") -> dict:
 class DownloadRequest(BaseModel):
     url: str
     format: Literal["video", "audio"] = "video"
-    quality: Literal["hd", "sd", "hi", "lo"] = "hd"
+    quality: Literal["hd", "sd", "2k", "4k", "8k", "best", "hi", "lo"] = "hd"
     playlist_index: int | None = Field(default=None, ge=1, le=200)
 
 

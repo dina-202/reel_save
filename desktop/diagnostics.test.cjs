@@ -16,13 +16,14 @@ function fixture(t, directory) {
 
 test('raw secrets and unknown fields never reach storage, preview or GitHub; opening is explicit', async t => {
   const { reports, opened, directory } = fixture(t);
-  reports.capture({ stage: 'metadata', code: 'format_unavailable', platform: 'instagram', quality: 'hd',
+  reports.capture({ stage: 'metadata', code: 'format_unavailable', platform: 'instagram', quality: '8k',
     downloader: '2026.8.19', format: 'video', http_status: 400, url: 'https://instagram.com/private',
     error: 'C:\\Users\\SECRET_USER token=SECRET_COOKIE', title: 'SECRET_TITLE', stack: 'SECRET_TRACE' });
   assert.equal(opened.length, 0);
   const { records } = reports.list();
   assert.equal(records.length, 2); // Saved failure + general report.
   assert.match(records[0].text, /format_unavailable/);
+  assert.match(records[0].text, /Quality: 8k/);
   const stored = fs.readFileSync(path.join(directory, 'diagnostics.json'), 'utf8');
   assert.doesNotMatch(stored + records[0].text, /SECRET|instagram\.com|C:\\/);
   await reports.open(records[0].id);

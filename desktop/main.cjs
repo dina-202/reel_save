@@ -187,7 +187,7 @@ async function start() {
   ipcMain.handle('media:download', async (event, request) => {
     if (!fromReelSave(event)) throw new Error('Downloads are only available in ReelSave.');
     const format = request?.format === 'audio' ? 'audio' : request?.format === 'video' ? 'video' : null;
-    const qualities = format === 'audio' ? ['hi', 'lo'] : ['hd', 'sd'];
+    const qualities = format === 'audio' ? ['hi', 'lo'] : ['hd', 'sd', '2k', '4k', '8k', 'best'];
     if (!format || !qualities.includes(request?.quality)) throw new Error('Choose a valid format and quality.');
     let source;
     try { source = new URL(request?.url); } catch { throw new Error('Enter a valid video link.'); }
