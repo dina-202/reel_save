@@ -289,7 +289,9 @@ export default function Hero({ onReport }) {
             {playlistDetected && <span className="rs-playlist-toggle__dot" aria-label="Playlist found" />}
           </button>
           <select className="rs-mode__quality" value={quality} onChange={event => setQuality(event.target.value)} aria-label="Download quality">
-            {mode === 'video' ? <><option value="hd">Prefer 1080p</option><option value="sd">Prefer 480p</option></>
+            {mode === 'video' ? <><option value="best">Best available</option><option value="8k">8K (4320p)</option>
+              <option value="4k">4K (2160p)</option><option value="2k">2K (1440p)</option>
+              <option value="hd">Full HD (1080p)</option><option value="sd">SD (480p)</option></>
               : <><option value="hi">320 kbps</option><option value="lo">128 kbps</option></>}
           </select>
         </div>

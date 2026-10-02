@@ -48,6 +48,19 @@ class VideoFormatTests(unittest.TestCase):
         info = self.select('hd', [self.video('silent', 1080, 1920)])
         self.assertEqual(info['format_id'], 'silent')
 
+    def test_high_resolution_preferences_select_the_requested_size(self):
+        formats = [self.video('1080', 1080, 1920), self.video('1440', 1440, 2560),
+                   self.video('2160', 2160, 3840), self.video('4320', 4320, 7680), self.audio()]
+        for quality, expected in [('2k', 1440), ('4k', 2160), ('8k', 4320)]:
+            with self.subTest(quality=quality):
+                self.assertEqual(self.select(quality, formats)['width'], expected)
+
+    def test_best_available_has_no_resolution_target(self):
+        options = backend.video_options('best')
+        self.assertNotIn('--format-sort', options)
+        formats = [self.video('1080', 1080, 1920), self.video('4320', 4320, 7680), self.audio()]
+        self.assertEqual(self.select('best', formats, options)['width'], 4320)
+
 
 class DownloadTests(unittest.TestCase):
     def setUp(self):

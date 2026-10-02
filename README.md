@@ -31,6 +31,10 @@ Download videos as **MP4** or extract audio as **MP3**.
 
 Video options include:
 
+* best available quality
+* 8K / 4320p preference
+* 4K / 2160p preference
+* 2K / 1440p preference
 * 1080p preference
 * 480p preference
 * automatic nearest-quality fallback

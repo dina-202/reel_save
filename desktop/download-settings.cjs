@@ -35,7 +35,7 @@ function filenameFromDisposition(header, fallback) {
 function friendlyDownloadError(value, status = 0) {
   const message = typeof value === 'string' ? value.toLowerCase() : '';
   if (status === 499 || message.includes('download stopped')) return 'Download stopped.';
-  if (message.includes('requested format is not available')) return 'That quality is unavailable for this video. Try the other quality setting.';
+  if (message.includes('requested format is not available')) return 'That quality is unavailable for this video. Try another quality setting.';
   if (message.includes('sign in') || message.includes('log in') || message.includes('login') || message.includes('cookies')) return 'This video requires a signed-in session that ReelSave cannot access.';
   if (message.includes('unsupported url')) return 'This link or website is not supported by the current downloader.';
   if (message.includes('private video') || message.includes('video unavailable') || message.includes('has been removed') || status === 404) return 'This video is unavailable, private, or has been removed.';
