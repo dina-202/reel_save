@@ -4,15 +4,27 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      desktop-dependencies:
+        patterns: ['*']
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
+    groups:
+      frontend-dependencies:
+        patterns: ['*']
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ['*']
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      workflow-actions:
+        patterns: ['*']
