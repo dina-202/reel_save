@@ -23,7 +23,7 @@
   "devDependencies": {
     "electron": "^44.2.0",
     "electron-builder": "^26.0.12",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.5"
   },
   "build": {
     "appId": "com.dina202.reelsave",
