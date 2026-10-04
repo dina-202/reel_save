@@ -6,15 +6,15 @@ import {
 } from 'lucide-react';
 
 const PLATFORMS = [
-  { name: 'Instagram', slug: 'instagram', color: 'E1306C' },
-  { name: 'TikTok', slug: 'tiktok', color: '010101' },
-  { name: 'Facebook', slug: 'facebook', color: '1877F2' },
-  { name: 'YouTube', slug: 'youtube', color: 'FF0000' },
-  { name: 'Reddit', slug: 'reddit', color: 'FF4500' },
+  { name: 'Instagram', slug: 'instagram' },
+  { name: 'TikTok', slug: 'tiktok' },
+  { name: 'Facebook', slug: 'facebook' },
+  { name: 'YouTube', slug: 'youtube' },
+  { name: 'Reddit', slug: 'reddit' },
 ];
 
-function platformIcon(slug, color, size = 20) {
-  return <img src={`https://cdn.simpleicons.org/${slug}/${color}`} width={size} height={size} alt="" />;
+function platformIcon(slug, size = 20) {
+  return <img src={`/assets/platforms/${slug}.svg`} width={size} height={size} alt="" />;
 }
 
 function sourceName(url) {
@@ -428,7 +428,7 @@ export default function Hero({ onReport }) {
         </div>
 
         <div className="rs-platforms" id="sites">
-          {PLATFORMS.map(platform => <span className="rs-pill" key={platform.name}>{platformIcon(platform.slug, platform.color)} {platform.name}</span>)}
+          {PLATFORMS.map(platform => <span className="rs-pill" key={platform.name}>{platformIcon(platform.slug)} {platform.name}</span>)}
         </div>
 
         {jobs.length > 0 && <section className="rs-queue" aria-live="polite">

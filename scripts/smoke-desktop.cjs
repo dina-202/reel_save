@@ -31,6 +31,20 @@ app.on('browser-window-created', (_event, window) => {
     }
     try {
       await until('!!document.querySelector(".rs-report__trigger")');
+      const securityHeaders = await run(`fetch('/').then(response => ({
+        csp: response.headers.get('content-security-policy'),
+        frame: response.headers.get('x-frame-options'),
+        mime: response.headers.get('x-content-type-options'),
+        referrer: response.headers.get('referrer-policy'),
+        permissions: response.headers.get('permissions-policy'),
+      }))`);
+      assert.match(securityHeaders.csp, /default-src 'self'/);
+      assert.match(securityHeaders.csp, /object-src 'none'/);
+      assert.equal(securityHeaders.frame, 'DENY');
+      assert.equal(securityHeaders.mime, 'nosniff');
+      assert.equal(securityHeaders.referrer, 'no-referrer');
+      assert.match(securityHeaders.permissions, /camera=\(\)/);
+      assert.equal(await run("[...document.images].every(image => new URL(image.src).origin === location.origin)"), true);
       assert.deepEqual(await run('window.reelSaveDesktop.browserSessionSettings()'),
         { enabled: false, method: 'browser', browser: 'chrome', profile: '', cookieFile: '' });
       await run('document.querySelector(".rs-session__switch").click()');

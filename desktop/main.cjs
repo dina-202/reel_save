@@ -83,6 +83,7 @@ async function start() {
   backend = spawn(path.join(pythonDir, 'python.exe'), [path.join(backendDir, 'desktop_server.py')], {
     cwd: backendDir, windowsHide: true,
     env: { ...process.env, REELSAVE_DESKTOP_TOKEN: token, REELSAVE_BUNDLED_PYTHON: '1',
+      PYTHONDONTWRITEBYTECODE: '1',
       REELSAVE_UI_DIR: app.isPackaged ? path.join(resources, 'frontend') : path.join(resources, 'frontend/dist'),
       PATH: `${path.join(runtime, 'bin')}${path.delimiter}${process.env.PATH || ''}` },
     stdio: ['ignore', 'pipe', 'pipe'],

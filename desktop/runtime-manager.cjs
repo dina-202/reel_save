@@ -5,9 +5,9 @@ const { spawn } = require('node:child_process');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 
-const RUNTIME_SCHEMA = 1;
-const RUNTIME_FILE = 'ReelSave-Runtime-Windows-x64-v1.zip';
-const RUNTIME_RELEASE = 'v1.0.5';
+const RUNTIME_SCHEMA = 2;
+const RUNTIME_FILE = 'ReelSave-Runtime-Windows-x64-v2.zip';
+const RUNTIME_RELEASE = 'v1.0.11';
 const RELEASE_BASE = `https://github.com/dina-202/reel_save/releases/download/${RUNTIME_RELEASE}`;
 
 function runtimeReady(directory) {
@@ -115,9 +115,15 @@ async function cleanupLegacyRuntimes(dataDir) {
   try { entries = await fs.promises.readdir(runtimeRoot, { withFileTypes: true }); } catch { return 0; }
   let removed = 0;
   for (const entry of entries) {
-    if (!entry.isDirectory() || !/^\d+\.\d+\.\d+$/.test(entry.name)) continue;
+    if (!entry.isDirectory()) continue;
     const legacy = path.join(runtimeRoot, entry.name);
-    if (!fs.existsSync(path.join(legacy, 'python', '.ready')) || !fs.existsSync(path.join(legacy, 'python', 'python.exe'))) continue;
+    const oldVersionDirectory = /^\d+\.\d+\.\d+$/.test(entry.name)
+      && fs.existsSync(path.join(legacy, 'python', '.ready'));
+    const shared = /^shared-v(\d+)$/.exec(entry.name);
+    const oldSharedDirectory = shared && Number(shared[1]) < RUNTIME_SCHEMA
+      && fs.existsSync(path.join(legacy, '.ready.json'));
+    if ((!oldVersionDirectory && !oldSharedDirectory)
+      || !fs.existsSync(path.join(legacy, 'python', 'python.exe'))) continue;
     await fs.promises.rm(legacy, { recursive: true, force: true });
     removed++;
   }

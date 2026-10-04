@@ -2,9 +2,8 @@ from contextlib import redirect_stdout
 import io
 import json
 import os
-from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -16,8 +15,10 @@ class DiagnosticTests(unittest.TestCase):
     def test_download_failure_emits_categories_without_private_data(self):
         output = io.StringIO()
         private_error = 'ERROR: [Instagram] SECRET_VIDEO: Requested format is not available. C:\\Users\\PRIVATE_USER https://instagram.com/reel/SECRET_VIDEO/?token=SECRET_TOKEN'
+        process = MagicMock(returncode=1)
+        process.communicate.return_value = ('', private_error)
         with patch.dict(os.environ, {'REELSAVE_DESKTOP_TOKEN': 'test'}), redirect_stdout(output), \
-                patch('backend.subprocess.run', return_value=SimpleNamespace(returncode=1, stderr=private_error)):
+                patch('backend.subprocess.Popen', return_value=process):
             response = TestClient(backend.app).post('/download', json={
                 'url': 'https://www.instagram.com/reel/SECRET_VIDEO/?token=SECRET_TOKEN', 'quality': 'hd'})
         self.assertEqual(response.status_code, 400)

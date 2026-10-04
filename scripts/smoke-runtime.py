@@ -17,6 +17,7 @@ backend = resources / 'backend' if packaged else root
 ui = resources / 'frontend' if packaged else root / 'frontend/dist'
 token = secrets.token_hex(32)
 env = {**os.environ, 'REELSAVE_DESKTOP_TOKEN': token, 'REELSAVE_BUNDLED_PYTHON': '1',
+       'PYTHONDONTWRITEBYTECODE': '1',
        'REELSAVE_UI_DIR': str(ui), 'PATH': str(runtime / 'bin') + os.pathsep + os.environ.get('SystemRoot', r'C:\Windows') + r'\System32'}
 python = runtime / 'python/python.exe'
 process = subprocess.Popen([str(python), str(backend / 'desktop_server.py')], cwd=backend,

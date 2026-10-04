@@ -37,7 +37,7 @@ export default function Footer() {
           <div className="rs-footer__social">
             {SOCIAL.map((s) => (
               <a href="#sites" key={s.label} aria-label={s.label}>
-                <img src={`https://cdn.simpleicons.org/${s.slug}/ffffff`} alt="" />
+                <img src={`/assets/platforms/${s.slug}.svg`} alt="" />
               </a>
             ))}
           </div>

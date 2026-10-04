@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { runtimeReady, verifyManifest, RUNTIME_FILE } = require('./runtime-manager.cjs');
+const { runtimeReady, verifyManifest, RUNTIME_FILE, RUNTIME_SCHEMA } = require('./runtime-manager.cjs');
 const { spawnSync } = require('node:child_process');
 
 test('runtime readiness requires the marker and every executable', async () => {
@@ -20,7 +20,7 @@ test('runtime readiness requires the marker and every executable', async () => {
 
 test('runtime manifest must be signed and name the fixed package', () => {
   const keys = crypto.generateKeyPairSync('ed25519');
-  const bytes = Buffer.from(JSON.stringify({ runtime: { schema: 1, file: RUNTIME_FILE, sha256: 'a'.repeat(64) } }));
+  const bytes = Buffer.from(JSON.stringify({ runtime: { schema: RUNTIME_SCHEMA, file: RUNTIME_FILE, sha256: 'a'.repeat(64) } }));
   const signature = crypto.sign(null, bytes, keys.privateKey).toString('base64');
   assert.equal(verifyManifest(bytes, signature, keys.publicKey).file, RUNTIME_FILE);
   assert.throws(() => verifyManifest(Buffer.from('{}'), signature, keys.publicKey), /signature/);
@@ -41,7 +41,7 @@ test('signed runtime package downloads, verifies, and expands atomically', async
   const archiveBytes = await fs.promises.readFile(archive);
   const keys = crypto.generateKeyPairSync('ed25519');
   const digest = crypto.createHash('sha256').update(archiveBytes).digest('hex');
-  const manifestBytes = Buffer.from(JSON.stringify({ runtime: { schema: 1, file: RUNTIME_FILE, sha256: digest } }));
+  const manifestBytes = Buffer.from(JSON.stringify({ runtime: { schema: RUNTIME_SCHEMA, file: RUNTIME_FILE, sha256: digest } }));
   const signature = crypto.sign(null, manifestBytes, keys.privateKey).toString('base64');
   const { ensureRuntime } = require('./runtime-manager.cjs');
   const fetchImpl = async url => url.endsWith('release-manifest.json') ? new Response(manifestBytes)
@@ -60,10 +60,14 @@ test('legacy versioned runtime copies are removed after migration', async () => 
   await fs.promises.mkdir(legacy, { recursive: true });
   await fs.promises.writeFile(path.join(legacy, '.ready'), '1.0.4');
   await fs.promises.writeFile(path.join(legacy, 'python.exe'), 'test');
-  await fs.promises.mkdir(path.join(root, 'runtime', 'shared-v1'), { recursive: true });
+  await fs.promises.mkdir(path.join(root, 'runtime', 'shared-v1', 'python'), { recursive: true });
+  await fs.promises.writeFile(path.join(root, 'runtime', 'shared-v1', 'python', 'python.exe'), 'test');
+  await fs.promises.writeFile(path.join(root, 'runtime', 'shared-v1', '.ready.json'), '{}');
+  await fs.promises.mkdir(path.join(root, 'runtime', 'shared-v2'), { recursive: true });
   const { cleanupLegacyRuntimes } = require('./runtime-manager.cjs');
-  assert.equal(await cleanupLegacyRuntimes(root), 1);
+  assert.equal(await cleanupLegacyRuntimes(root), 2);
   assert.equal(fs.existsSync(path.join(root, 'runtime', '1.0.4')), false);
-  assert.equal(fs.existsSync(path.join(root, 'runtime', 'shared-v1')), true);
+  assert.equal(fs.existsSync(path.join(root, 'runtime', 'shared-v1')), false);
+  assert.equal(fs.existsSync(path.join(root, 'runtime', 'shared-v2')), true);
   await fs.promises.rm(root, { recursive: true, force: true });
 });

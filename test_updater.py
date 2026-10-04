@@ -58,15 +58,30 @@ class UpdateTests(unittest.TestCase):
 
     def test_install_verifies_version_and_releases_downloads(self):
         updater.operation_lock.acquire()
-        with patch('updater.subprocess.run', side_effect=[SimpleNamespace(returncode=0), SimpleNamespace(returncode=0, stdout='2026.08.19')]) as run:
+        wheel = b'wheel bytes'
+        with patch('updater.download_verified_wheel', return_value=(wheel, 'yt_dlp-2026.8.19-py3-none-any.whl')), patch('updater.subprocess.run', side_effect=[SimpleNamespace(returncode=0), SimpleNamespace(returncode=0, stdout='2026.08.19')]) as run:
             updater.install('2026.8.19')
         self.assertEqual(updater.state['status'], 'updated')
         self.assertFalse(updater.operation_lock.locked())
-        self.assertIn('yt-dlp[default]==2026.8.19', run.call_args_list[0].args[0])
+        self.assertIn('--no-deps', run.call_args_list[0].args[0])
+        self.assertTrue(run.call_args_list[0].args[0][-1].endswith('.whl'))
+
+    def test_downloader_update_rejects_a_bad_package_hash(self):
+        metadata = self.registry()
+        metadata = httpx.Response(200, json={'releases': {'2026.8.19': [{
+            'packagetype': 'bdist_wheel', 'python_version': 'py3',
+            'filename': 'yt_dlp-2026.8.19-py3-none-any.whl',
+            'url': 'https://files.pythonhosted.org/packages/yt_dlp.whl',
+            'digests': {'sha256': '0' * 64},
+        }]}}, request=httpx.Request('GET', 'https://pypi.org'))
+        package = httpx.Response(200, content=b'not the expected file', request=httpx.Request('GET', 'https://files.pythonhosted.org'))
+        with patch('updater.httpx.get', side_effect=[metadata, package]):
+            with self.assertRaisesRegex(RuntimeError, 'checksum'):
+                updater.download_verified_wheel('2026.8.19')
 
     def test_failed_install_is_retryable(self):
         updater.operation_lock.acquire()
-        with patch('updater.subprocess.run', side_effect=subprocess.TimeoutExpired('pip', 300)):
+        with patch('updater.download_verified_wheel', return_value=(b'wheel', 'yt_dlp-2026.8.19-py3-none-any.whl')), patch('updater.subprocess.run', side_effect=subprocess.TimeoutExpired('pip', 300)):
             updater.install('2026.8.19')
         self.assertEqual(updater.state['status'], 'failed')
         self.assertFalse(updater.operation_lock.locked())

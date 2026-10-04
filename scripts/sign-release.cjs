@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { sha256, verifyUpdate } = require('../desktop/verify-update.cjs');
+const { RUNTIME_FILE, RUNTIME_SCHEMA } = require('../desktop/runtime-manager.cjs');
 const root = path.join(__dirname, '..');
 const privateFile = path.join(root, '.release-keys/update-private.pem');
 const publicFile = path.join(root, 'desktop/update-public-key.pem');
@@ -22,10 +23,9 @@ async function main() {
   const privateKey = process.env.REELSAVE_UPDATE_PRIVATE_KEY || fs.readFileSync(privateFile);
   const manifest = { version, installer, sha256: await sha256(file) };
   if (process.argv.includes('--include-runtime')) {
-    const runtimeFile = 'ReelSave-Runtime-Windows-x64-v1.zip';
-    const runtimePath = path.join(root, 'release', runtimeFile);
-    if (!fs.existsSync(runtimePath)) throw new Error(`Missing ${runtimeFile}. Run npm run package:runtime first.`);
-    manifest.runtime = { schema: 1, file: runtimeFile, sha256: await sha256(runtimePath) };
+    const runtimePath = path.join(root, 'release', RUNTIME_FILE);
+    if (!fs.existsSync(runtimePath)) throw new Error(`Missing ${RUNTIME_FILE}. Run npm run package:runtime first.`);
+    manifest.runtime = { schema: RUNTIME_SCHEMA, file: RUNTIME_FILE, sha256: await sha256(runtimePath) };
   }
   const bytes = Buffer.from(JSON.stringify(manifest));
   const signature = crypto.sign(null, bytes, privateKey).toString('base64');

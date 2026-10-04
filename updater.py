@@ -1,11 +1,14 @@
 """Local-only yt-dlp updates, isolated from running downloads."""
 from importlib.metadata import version, PackageNotFoundError
+import hashlib
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import os
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 import httpx
@@ -33,6 +36,9 @@ def finish_transfer():
     with state_lock:
         active_transfers -= 1
 state = {"status": "idle", "latest": None, "error": None, "checked_at": 0, "current": version("yt-dlp")}
+PYPI_METADATA = "https://pypi.org/pypi/yt-dlp/json"
+PYPI_FILES = "https://files.pythonhosted.org/"
+MAX_WHEEL_BYTES = 25 * 1024 * 1024
 
 
 def local_only(request: Request):
@@ -64,7 +70,7 @@ def check(request: Request, refresh: bool = False):
         should_check = state["status"] != "updating" and (refresh or time.time() - state["checked_at"] > 3600)
     if should_check:
         try:
-            response = httpx.get("https://pypi.org/pypi/yt-dlp/json", timeout=15)
+            response = httpx.get(PYPI_METADATA, timeout=15)
             response.raise_for_status()
             latest = str(Version(response.json()["info"]["version"]))
             with state_lock:
@@ -79,15 +85,46 @@ def check(request: Request, refresh: bool = False):
     return snapshot()
 
 
+def download_verified_wheel(latest):
+    metadata = httpx.get(PYPI_METADATA, timeout=15)
+    metadata.raise_for_status()
+    files = metadata.json().get("releases", {}).get(latest, [])
+    wheels = [item for item in files if item.get("packagetype") == "bdist_wheel"
+              and item.get("python_version") == "py3"
+              and str(item.get("filename", "")).startswith("yt_dlp-")
+              and str(item.get("filename", "")).endswith("-none-any.whl")]
+    if len(wheels) != 1:
+        raise RuntimeError("PyPI did not provide one compatible yt-dlp wheel.")
+    artifact = wheels[0]
+    filename = str(artifact.get("filename", ""))
+    url = str(artifact.get("url", ""))
+    expected = str(artifact.get("digests", {}).get("sha256", "")).lower()
+    if (Path(filename).name != filename or len(filename) > 200
+            or any(not (c.isalnum() or c in "._-") for c in filename)
+            or not url.startswith(PYPI_FILES) or len(expected) != 64
+            or any(c not in "0123456789abcdef" for c in expected)):
+        raise RuntimeError("PyPI returned invalid yt-dlp package details.")
+    package = httpx.get(url, timeout=60, follow_redirects=False)
+    package.raise_for_status()
+    if not package.content or len(package.content) > MAX_WHEEL_BYTES:
+        raise RuntimeError("The yt-dlp update package has an invalid size.")
+    if not secrets.compare_digest(hashlib.sha256(package.content).hexdigest(), expected):
+        raise RuntimeError("The yt-dlp update package failed checksum verification.")
+    return package.content, filename
+
+
 def install(latest):
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "--isolated", "install", "--upgrade",
-             "--disable-pip-version-check", "--no-input", "--index-url", "https://pypi.org/simple",
-             f"yt-dlp[default]=={latest}"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-        )
+        package, filename = download_verified_wheel(latest)
+        with tempfile.TemporaryDirectory(prefix="reelsave-update-") as temporary:
+            wheel = Path(temporary, filename)
+            wheel.write_bytes(package)
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "--isolated", "install", "--upgrade", "--no-deps",
+                 "--disable-pip-version-check", "--no-input", str(wheel)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+            )
         if result.returncode:
             raise RuntimeError((result.stderr or result.stdout)[-1200:])
         verified = subprocess.run([sys.executable, "-m", "yt_dlp", "--version"],
