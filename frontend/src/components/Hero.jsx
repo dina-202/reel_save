@@ -82,12 +82,33 @@ export default function Hero({ onReport }) {
   }, []);
 
   useEffect(() => {
+    if (!jobs.some(job => job.status === 'downloading')) return;
+    let disposed = false;
+    let busy = false;
+    const poll = async () => {
+      if (disposed || busy) return;
+      busy = true;
+      try {
+        const progress = await window.reelSaveDesktop.downloadProgress();
+        if (!disposed && ['preparing', 'downloading', 'processing', 'saving'].includes(progress.phase)) {
+          setJobs(current => current.map(job => job.id === activeJobId.current && job.status === 'downloading'
+            ? { ...job, phase: progress.phase, progress: Number.isFinite(progress.percent) ? progress.percent : null } : job));
+        }
+      } catch { /* Downloads may finish between polls. */ }
+      finally { busy = false; }
+    };
+    poll();
+    const timer = setInterval(poll, 350);
+    return () => { disposed = true; clearInterval(timer); };
+  }, [jobs.some(job => job.status === 'downloading')]);
+
+  useEffect(() => {
     if (paused || stopping || active.current) return;
     const next = jobs.find(job => job.status === 'queued');
     if (!next) return;
     active.current = true;
     activeJobId.current = next.id;
-    setJobs(current => current.map(job => job.id === next.id ? { ...job, status: 'downloading', error: '' } : job));
+    setJobs(current => current.map(job => job.id === next.id ? { ...job, status: 'downloading', phase: 'preparing', progress: null, error: '' } : job));
     (async () => {
       try {
         const saved = await window.reelSaveDesktop.downloadMedia({
@@ -451,10 +472,21 @@ export default function Hero({ onReport }) {
               <span className="rs-queue__number">{index + 1}</span>
               <div className="rs-queue__info">
                 <strong>{job.filename || job.title || sourceName(job.url)}</strong>
-                <small>{job.mode === 'audio' ? 'MP3' : 'MP4'} · {job.status === 'queued' ? 'Waiting' : job.status === 'downloading' ? 'Downloading and processing…'
+                <small>{job.mode === 'audio' ? 'MP3' : 'MP4'} · {job.status === 'queued' ? 'Waiting' : job.status === 'downloading' ? ({
+                    preparing: 'Preparing…', downloading: 'Downloading…',
+                    processing: 'Processing video/audio…', saving: 'Saving to folder…'
+                  }[job.phase] || 'Starting…')
                   : job.status === 'stopping' ? 'Stopping safely…' : job.status === 'paused' ? 'Paused' : job.status === 'saved' ? `Saved to ${job.folder}` : job.error}</small>
               </div>
-              {['downloading', 'stopping'].includes(job.status) ? <span className="rs-spin rs-spin--purple" /> : job.status === 'saved'
+              {job.status === 'downloading' && <div className="rs-queue__progress">
+                 <div className="rs-queue__progress-track" role="progressbar" aria-label="Current stage progress"
+                   aria-valuemin={0} aria-valuemax={100}
+                   aria-valuenow={Number.isFinite(job.progress) ? Math.round(job.progress) : undefined}>
+                   <span style={{ width: `${Number.isFinite(job.progress) ? job.progress : 0}%` }} />
+                 </div>
+                 <span>{Number.isFinite(job.progress) ? `${Math.round(job.progress)}%` : 'Working…'}</span>
+               </div>}
+               {['downloading', 'stopping'].includes(job.status) ? <span className="rs-spin rs-spin--purple" /> : job.status === 'saved'
                 ? <CheckCircle2 className="rs-queue__ok" size={20} /> : job.status === 'error' ? <AlertCircle className="rs-queue__bad" size={20} /> : null}
               {!['downloading', 'stopping'].includes(job.status) && <button className="rs-queue__remove" aria-label="Remove from queue"
                 onClick={() => setJobs(current => current.filter(item => item.id !== job.id))}><X size={15} /></button>}
