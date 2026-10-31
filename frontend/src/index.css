@@ -570,6 +570,10 @@ a { color: inherit; text-decoration: none; }
 .rs-queue__info strong, .rs-queue__info small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rs-queue__info strong { color: var(--rs-ink); font-size: 13px; }
 .rs-queue__info small { margin-top: 3px; color: var(--rs-text-3); font-size: 11px; }
+.rs-queue__progress { display: flex; align-items: center; gap: 7px; width: 122px; flex: 0 0 122px; }
+.rs-queue__progress-track { flex: 1; height: 6px; overflow: hidden; border-radius: 6px; background: rgba(124,58,237,.15); }
+.rs-queue__progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--rs-purple); transition: width .25s ease; }
+.rs-queue__progress > span { min-width: 43px; color: var(--rs-purple-700); font-size: 10px; font-weight: 700; text-align: right; }
 .rs-queue__ok { color: var(--rs-success); flex: 0 0 auto; }
 .rs-queue__bad { color: var(--rs-danger); flex: 0 0 auto; }
 .rs-queue__remove { display: grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--rs-text-3); cursor: pointer; }
