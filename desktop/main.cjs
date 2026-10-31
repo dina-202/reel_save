@@ -21,6 +21,7 @@ let restartApproved = false;
 let diagnostics;
 let downloadSettings;
 let activeMediaAbort;
+let savingProgress = null;
 const token = crypto.randomBytes(32).toString('hex');
 if (process.env.REELSAVE_DATA_DIR) app.setPath('userData', path.resolve(process.env.REELSAVE_DATA_DIR));
 app.setAppUserModelId('com.dina202.reelsave');
@@ -205,6 +206,11 @@ async function start() {
     }
     return response.json();
   });
+  ipcMain.handle('media:progress', async event => {
+    if (!fromReelSave(event)) throw new Error('Download progress is only available in ReelSave.');
+    if (savingProgress) return { ...savingProgress };
+    return api('/downloads/progress');
+  });
   ipcMain.handle('media:cancel', async event => {
     if (!fromReelSave(event)) throw new Error('Downloads can only be stopped from ReelSave.');
     const controller = activeMediaAbort;
@@ -226,6 +232,7 @@ async function start() {
     }
     const controller = new AbortController();
     activeMediaAbort = controller;
+    savingProgress = null;
     const authentication = authenticationPayload();
     try {
       let response;
@@ -251,7 +258,19 @@ async function start() {
       const destination = await downloadSettings.destination(filename, `download.${extension}`);
       try {
         if (!response.body) throw new Error('The download returned no file data.');
-        await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination, { flags: 'wx' }));
+        const total = Number(response.headers.get('content-length'));
+        let savedBytes = 0;
+        savingProgress = { phase: 'saving', percent: Number.isFinite(total) && total > 0 ? 0 : null };
+        const { Transform } = require('node:stream');
+        const meter = new Transform({
+          transform(chunk, encoding, callback) {
+            savedBytes += chunk.length;
+            savingProgress = { phase: 'saving', percent: Number.isFinite(total) && total > 0
+              ? Math.min(100, Math.round(savedBytes / total * 100)) : null };
+            callback(null, chunk);
+          },
+        });
+        await pipeline(Readable.fromWeb(response.body), meter, fs.createWriteStream(destination, { flags: 'wx' }), { signal: controller.signal });
         return { filename: path.basename(destination), folder: path.dirname(destination) };
       } catch {
         try { await fs.promises.unlink(destination); } catch { /* No partial file to remove. */ }
@@ -260,7 +279,7 @@ async function start() {
         throw new Error('ReelSave could not save the file. Check the folder access and available disk space.');
       } finally { downloadSettings.release(destination); }
     } finally {
-      if (activeMediaAbort === controller) activeMediaAbort = null;
+      if (activeMediaAbort === controller) { activeMediaAbort = null; savingProgress = null; }
     }
   });
   for (const [name, handler] of Object.entries({
