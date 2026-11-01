@@ -90,7 +90,7 @@ export default function Hero({ onReport }) {
       busy = true;
       try {
         const progress = await window.reelSaveDesktop.downloadProgress();
-        if (!disposed && ['preparing', 'downloading', 'processing', 'saving'].includes(progress.phase)) {
+        if (!disposed && ['preparing', 'retrying', 'downloading', 'processing', 'saving'].includes(progress.phase)) {
           setJobs(current => current.map(job => job.id === activeJobId.current && job.status === 'downloading'
             ? { ...job, phase: progress.phase, progress: Number.isFinite(progress.percent) ? progress.percent : null } : job));
         }
@@ -473,7 +473,7 @@ export default function Hero({ onReport }) {
               <div className="rs-queue__info">
                 <strong>{job.filename || job.title || sourceName(job.url)}</strong>
                 <small>{job.mode === 'audio' ? 'MP3' : 'MP4'} · {job.status === 'queued' ? 'Waiting' : job.status === 'downloading' ? ({
-                    preparing: 'Preparing…', downloading: 'Downloading…',
+                    preparing: 'Preparing…', retrying: 'Retrying with YouTube Android client…', downloading: 'Downloading…',
                     processing: 'Processing video/audio…', saving: 'Saving to folder…'
                   }[job.phase] || 'Starting…')
                   : job.status === 'stopping' ? 'Stopping safely…' : job.status === 'paused' ? 'Paused' : job.status === 'saved' ? `Saved to ${job.folder}` : job.error}</small>
