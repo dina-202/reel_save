@@ -19,6 +19,7 @@ import threading
 from types import SimpleNamespace
 from updater import router as updater_router, operation_lock, begin_transfer, finish_transfer
 from diagnostics import diagnostic_operation
+from youtube_fallback import should_retry_android, android_fallback_format
 
 app = FastAPI(title="ReelSave Engine", docs_url=None, redoc_url=None)
 app.include_router(updater_router)
@@ -387,10 +388,33 @@ def download_file(req: DownloadRequest, audio: bool):
         if req.playlist_index is not None:
             args += ["--playlist-items", str(req.playlist_index)]
         args += authentication_options(req.browser_session, req.browser_profile, req.cookie_file)
-        if req.playlist_index is None:
-            run_ytdlp(args + ["--", req.url.strip()], timeout=600, track_progress=True)
-        else:
-            run_ytdlp(args + ["--", req.url.strip()], timeout=600, allow_playlist=True, track_progress=True)
+        source = req.url.strip()
+        allow_playlist = req.playlist_index is not None
+        try:
+            run_ytdlp(args + ["--", source], timeout=600,
+                      allow_playlist=allow_playlist, track_progress=True)
+        except HTTPException as error:
+            if error.status_code != 400 or not should_retry_android(source, str(error.detail)):
+                raise
+            # A 403 can be specific to the normal YouTube media client.
+            # Retry once with the Android player client, using its broader format
+            # selection, without changing auth, output path, or cancellation.
+            _set_download_progress("retrying")
+            for partial in Path(tmpdir.name).iterdir():
+                if partial.is_file():
+                    partial.unlink()
+            fallback = ["--windows-filenames", "-o", os.path.join(
+                tmpdir.name, "%(title).180B [%(id)s].%(ext)s")]
+            fallback += android_fallback_format(audio, req.quality)
+            fallback += (["--extract-audio", "--audio-format", "mp3",
+                          "--audio-quality", "128K" if req.quality == "lo" else "320K"]
+                         if audio else ["--merge-output-format", "mp4", "--recode-video", "mp4"])
+            if allow_playlist:
+                fallback += ["--playlist-items", str(req.playlist_index)]
+            fallback += ["--extractor-args", "youtube:player_client=android"]
+            fallback += authentication_options(req.browser_session, req.browser_profile, req.cookie_file)
+            run_ytdlp(fallback + ["--", source], timeout=600,
+                      allow_playlist=allow_playlist, track_progress=True)
         _set_download_progress("processing")
         ext = "mp3" if audio else "mp4"
         matches = sorted(Path(tmpdir.name).glob(f"*.{ext}"))
