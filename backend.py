@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,13 +53,35 @@ def detect_platform(url: str) -> str:
 
 _process_state_lock = threading.Lock()
 _active_process: dict | None = None
+_progress_lock = threading.Lock()
+_download_progress = {"phase": "idle", "percent": None}
 
 
-def run_ytdlp(args: list[str], timeout: int = 120, allow_playlist: bool = False):
+def _set_download_progress(phase: str, percent: float | None = None):
+    """Expose only anonymous download state, never URLs, names or log output."""
+    with _progress_lock:
+        _download_progress.update(phase=phase, percent=percent)
+
+
+def _record_progress_line(line: str):
+    if line.startswith("RS_PROGRESS:"):
+        value = line.removeprefix("RS_PROGRESS:").strip().strip("%").strip()
+        try:
+            percent = float(value)
+        except ValueError:
+            return
+        if 0 <= percent <= 100:
+            _set_download_progress("downloading", round(percent, 1))
+    elif re.match(r"^\\[(Merger|ExtractAudio|VideoConvertor|Fixup[^\\]]*|Metadata|EmbedThumbnail)\\]", line):
+        _set_download_progress("processing")
+
+
+def run_ytdlp(args: list[str], timeout: int = 120, allow_playlist: bool = False,
+              track_progress: bool = False):
     if not operation_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="A download or update is running. Please retry when it finishes.")
     try:
-        return _run_ytdlp(args, timeout, allow_playlist)
+        return _run_ytdlp(args, timeout, allow_playlist, track_progress)
     finally:
         operation_lock.release()
 
@@ -88,17 +111,23 @@ def cancel_active_download() -> bool:
     return True
 
 
-def _run_ytdlp(args: list[str], timeout: int = 120, allow_playlist: bool = False):
+def _run_ytdlp(args: list[str], timeout: int = 120, allow_playlist: bool = False,
+               track_progress: bool = False):
     playlist_option = "--yes-playlist" if allow_playlist else "--no-playlist"
     cmd = [sys.executable, "-m", "yt_dlp", "--ignore-config", playlist_option,
            "--socket-timeout", "30"]
     if shutil.which("node"):
         cmd += ["--js-runtimes", "node"]
+    if track_progress:
+        # --newline makes each yt-dlp progress update readable from a pipe.
+        cmd += ["--newline", "--no-colors",
+                "--progress-template", "download:RS_PROGRESS:%(progress._percent_str)s"]
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     if os.name == "nt":
         flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     process = None
     active = None
+    readers = []
     try:
         process = subprocess.Popen(cmd + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, encoding="utf-8", errors="replace",
@@ -107,11 +136,38 @@ def _run_ytdlp(args: list[str], timeout: int = 120, allow_playlist: bool = False
         global _active_process
         with _process_state_lock:
             _active_process = active
-        stdout, stderr = process.communicate(timeout=timeout)
+        if track_progress:
+            # Consume both pipes concurrently: yt-dlp and ffmpeg can emit enough
+            # output to block if either one is left unread.
+            stdout_lines, stderr_lines = [], []
+
+            def collect(stream, lines, watch_progress=False):
+                try:
+                    for line in stream:
+                        lines.append(line)
+                        if watch_progress:
+                            _record_progress_line(line)
+                finally:
+                    stream.close()
+
+            readers = [
+                threading.Thread(target=collect, args=(process.stdout, stdout_lines, True), daemon=True),
+                threading.Thread(target=collect, args=(process.stderr, stderr_lines), daemon=True),
+            ]
+            for reader in readers:
+                reader.start()
+            process.wait(timeout=timeout)
+            for reader in readers:
+                reader.join()
+            stdout, stderr = "".join(stdout_lines), "".join(stderr_lines)
+        else:
+            stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         if process is not None:
             _terminate_process_tree(process)
-            process.communicate()
+            process.wait()
+            for reader in readers:
+                reader.join(timeout=3)
         raise HTTPException(status_code=504, detail="The download timed out. Try again or choose a shorter video.")
     finally:
         with _process_state_lock:
@@ -294,6 +350,12 @@ def cancel_download():
     return {"stopped": cancel_active_download()}
 
 
+@app.get("/downloads/progress")
+def download_progress():
+    with _progress_lock:
+        return dict(_download_progress)
+
+
 def download_file(req: DownloadRequest, audio: bool):
     if not req.url.strip():
         raise HTTPException(status_code=400, detail="URL is required.")
@@ -301,11 +363,18 @@ def download_file(req: DownloadRequest, audio: bool):
         raise HTTPException(status_code=503, detail="The bundled FFmpeg tool is missing. Reinstall ReelSave to repair it.")
 
     tmpdir = tempfile.TemporaryDirectory()
-    begin_transfer()
+    try:
+        begin_transfer()
+    except Exception:
+        tmpdir.cleanup()
+        raise
+    _set_download_progress("preparing")
+
     def cleanup_download():
         try:
             tmpdir.cleanup()
         finally:
+            _set_download_progress("idle")
             finish_transfer()
     try:
         args = ["--windows-filenames", "-o", os.path.join(tmpdir.name, "%(title).180B [%(id)s].%(ext)s")]
@@ -319,14 +388,16 @@ def download_file(req: DownloadRequest, audio: bool):
             args += ["--playlist-items", str(req.playlist_index)]
         args += authentication_options(req.browser_session, req.browser_profile, req.cookie_file)
         if req.playlist_index is None:
-            run_ytdlp(args + ["--", req.url.strip()], timeout=600)
+            run_ytdlp(args + ["--", req.url.strip()], timeout=600, track_progress=True)
         else:
-            run_ytdlp(args + ["--", req.url.strip()], timeout=600, allow_playlist=True)
+            run_ytdlp(args + ["--", req.url.strip()], timeout=600, allow_playlist=True, track_progress=True)
+        _set_download_progress("processing")
         ext = "mp3" if audio else "mp4"
         matches = sorted(Path(tmpdir.name).glob(f"*.{ext}"))
         if len(matches) != 1:
             raise HTTPException(status_code=502, detail=f"No {ext.upper()} file was produced.")
         path = str(matches[0])
+        _set_download_progress("saving")
         # Keep the temporary file alive until the response has finished streaming.
         return FileResponse(path, media_type="audio/mpeg" if audio else "video/mp4",
                             filename=matches[0].name, background=BackgroundTask(cleanup_download))
