@@ -46,6 +46,10 @@
         "to": "backend/backend.py"
       },
       {
+        "from": "youtube_fallback.py",
+        "to": "backend/youtube_fallback.py"
+      },
+      {
         "from": "diagnostics.py",
         "to": "backend/diagnostics.py"
       },
